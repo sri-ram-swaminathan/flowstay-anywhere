@@ -96,7 +96,7 @@ export const LLM_MODELS: LlmModel[] = [
     repo: 'onnx-community/Qwen3.5-0.8B-Text-ONNX',
     label: 'Qwen3.5 0.8B',
     approxMB: 600,
-    note: 'Good rewrites, multilingual. Best with GPU acceleration; on CPU-only devices it downloads full-precision weights (much larger).',
+    note: 'Good rewrites, multilingual. Needs GPU acceleration (WebGPU).',
     thinkingToggle: true,
   },
   {
@@ -104,7 +104,7 @@ export const LLM_MODELS: LlmModel[] = [
     repo: 'onnx-community/gemma-3-270m-it-ONNX',
     label: 'Gemma 3 270M',
     approxMB: 250,
-    note: 'Tiny. Fine for cleanup/punctuation, weaker at tone changes.',
+    note: 'Tiny. Fine for cleanup/punctuation, weaker at tone changes. Needs GPU acceleration (WebGPU).',
   },
 ];
 

@@ -49,7 +49,7 @@ for (const model of ASR) {
 }
 
 const llmRuns = [];
-for (const llm of LLM) llmRuns.push([llm, 'cpu'], [llm, 'gpu']);
+for (const llm of LLM) llmRuns.push([llm, 'gpu']);
 for (const [llm, dev] of llmRuns) {
   await browser.close();
   browser = await chromium.launch({ args: dev === 'gpu' ? [...MEDIA, ...WEBGPU] : MEDIA });

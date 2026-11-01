@@ -19,14 +19,15 @@ const post = (msg: WorkerResponse) => (self as unknown as Worker).postMessage(ms
 let asr: { key: string; pipe: AutomaticSpeechRecognitionPipeline; model: AsrModel; device: string } | null = null;
 let llm: { key: string; tok: PreTrainedTokenizer; model: PreTrainedModel } | null = null;
 
-async function hasWebGPU(): Promise<boolean> {
+async function gpuInfo(): Promise<{ ok: boolean; f16: boolean }> {
   try {
-    const gpu = (navigator as any).gpu;
-    return !!gpu && !!(await gpu.requestAdapter());
+    const a = await (navigator as any).gpu?.requestAdapter();
+    return { ok: !!a, f16: !!a?.features?.has('shader-f16') };
   } catch {
-    return false;
+    return { ok: false, f16: false };
   }
 }
+const hasWebGPU = async () => (await gpuInfo()).ok;
 
 async function pickDevice(pref: string, family: string): Promise<'webgpu' | 'wasm'> {
   if (pref === 'cpu') return 'wasm';
@@ -151,29 +152,29 @@ async function transcribe(req: Extract<WorkerRequest, { type: 'transcribe' }>) {
 
 async function loadLlm(modelId: string) {
   const m = findLlm(modelId);
-  const device = (await hasWebGPU()) ? 'webgpu' : 'wasm';
-  const key = `${m.id}:${device}`;
+  const gpu = await gpuInfo();
+  if (!gpu.ok) {
+    // Current ONNX exports of small LLMs use block-quantized embeddings with GPU-only kernels.
+    throw new Error('On-device rewriting needs GPU acceleration (WebGPU), which this device/browser does not offer. Switch the persona engine to OpenRouter or Claude Code.');
+  }
+  const key = `${m.id}:${gpu.f16}`;
   if (llm?.key === key) return llm;
   if (llm) { await llm.model.dispose().catch(() => {}); llm = null; }
   const cb = progress('llm');
-  // Current ONNX exports quantize the embedding table (GatherBlockQuantized), which only has
-  // GPU kernels in the browser runtime. On CPU-only devices use unquantized weights instead.
-  const attempts: [string, string][] = device === 'webgpu'
-    ? [[m.repo, 'q4f16'], [m.repo, 'q4'], [m.repo, 'fp16']]
-    : [[m.repo, 'q8'], [m.repo, 'fp16'], [m.repo, 'fp32']];
+  const dtypes = gpu.f16 ? ['q4f16', 'q4'] : ['q4', 'fp32'];
   const errors: string[] = [];
-  for (const [repo, dtype] of attempts) {
+  const tok = await AutoTokenizer.from_pretrained(m.repo, { progress_callback: cb });
+  for (const dtype of dtypes) {
     try {
-      const tok = await AutoTokenizer.from_pretrained(repo, { progress_callback: cb });
-      const model = await AutoModelForCausalLM.from_pretrained(repo, { device, dtype: dtype as any, progress_callback: cb });
-      console.info(`Rewrite model ${repo} loaded as ${dtype} on ${device}`);
+      const model = await AutoModelForCausalLM.from_pretrained(m.repo, { device: 'webgpu', dtype: dtype as any, progress_callback: cb });
+      console.info(`Rewrite model ${m.repo} loaded as ${dtype}`);
       llm = { key, tok, model };
       return llm;
     } catch (e) {
-      errors.push(`${repo.split('/')[1]} ${dtype}: ${String((e as any)?.message ?? e).slice(0, 120)}`);
+      errors.push(`${dtype}: ${String((e as any)?.message ?? e).slice(0, 140)}`);
     }
   }
-  throw new Error(`Couldn't load a rewrite model on ${device}. ${errors.join(' | ')}`);
+  throw new Error(`Couldn't load ${m.label}. ${errors.join(' | ')}`);
 }
 
 async function rewrite(req: Extract<WorkerRequest, { type: 'rewrite' }>) {
