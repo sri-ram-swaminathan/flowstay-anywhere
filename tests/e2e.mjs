@@ -10,9 +10,10 @@ const LLM = (process.env.E2E_LLM || 'gemma-3-270m,qwen3.5-0.8b').split(',').filt
 const results = [];
 let failed = false;
 
-const browser = await chromium.launch({
-  args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`, '--autoplay-policy=no-user-gesture-required'],
-});
+const MEDIA = ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', `--use-file-for-fake-audio-capture=${wav}`, '--autoplay-policy=no-user-gesture-required'];
+// Software WebGPU (SwiftShader) so the GPU code path is exercised on a GPU-less CI runner.
+const WEBGPU = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader'];
+let browser = await chromium.launch({ args: MEDIA });
 
 async function page(settings) {
   const ctx = await browser.newContext({ permissions: ['microphone'], viewport: { width: 1100, height: 800 } });
@@ -47,19 +48,25 @@ for (const model of ASR) {
   await p.context().close();
 }
 
-for (const llm of LLM) {
+const llmRuns = [];
+for (const llm of LLM) llmRuns.push([llm, 'cpu'], [llm, 'gpu']);
+for (const [llm, dev] of llmRuns) {
+  await browser.close();
+  browser = await chromium.launch({ args: dev === 'gpu' ? [...MEDIA, ...WEBGPU] : MEDIA });
   const p = await page({ provider: 'local', localLlmModel: llm, personasEnabled: true, selectedPersonaId: 'cleanup' });
+  const hasGpu = await p.evaluate(async () => !!(await navigator.gpu?.requestAdapter()));
+  if (dev === 'gpu' && !hasGpu) { results.push({ llm: `${llm} (gpu)`, ok: true, text: 'skipped: no WebGPU adapter on runner' }); await p.context().close(); continue; }
   try {
     await p.click('nav >> text=Personas');
     await p.click('text=Rewrite with');
     await p.waitForSelector('.original', { timeout: 600_000 });
     const out = await p.locator('.original').last().innerText();
     const ok = !out.startsWith('⚠️') && /thursday/i.test(out);
-    results.push({ llm, ok, text: out });
+    results.push({ llm: `${llm} (${dev})`, ok, text: out });
     if (!ok) failed = true;
   } catch (e) {
     failed = true;
-    results.push({ llm, ok: false, error: String(e).slice(0, 300) });
+    results.push({ llm: `${llm} (${dev})`, ok: false, error: String(e).slice(0, 300) });
   }
   await p.context().close();
 }

@@ -149,8 +149,6 @@ async function transcribe(req: Extract<WorkerRequest, { type: 'transcribe' }>) {
   return { text: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(), ms: performance.now() - t0 };
 }
 
-const CPU_FALLBACK_LLM = 'onnx-community/Qwen2.5-0.5B-Instruct';
-
 async function loadLlm(modelId: string) {
   const m = findLlm(modelId);
   const device = (await hasWebGPU()) ? 'webgpu' : 'wasm';
@@ -158,17 +156,17 @@ async function loadLlm(modelId: string) {
   if (llm?.key === key) return llm;
   if (llm) { await llm.model.dispose().catch(() => {}); llm = null; }
   const cb = progress('llm');
-  // Newer exports use 4-bit block-quantized embeddings that only have GPU kernels.
-  // On CPU-only devices try 8-bit variants, then a long-established CPU-friendly model.
+  // Current ONNX exports quantize the embedding table (GatherBlockQuantized), which only has
+  // GPU kernels in the browser runtime. On CPU-only devices use unquantized weights instead.
   const attempts: [string, string][] = device === 'webgpu'
     ? [[m.repo, 'q4f16'], [m.repo, 'q4'], [m.repo, 'fp16']]
-    : [[m.repo, 'q8'], [m.repo, 'int8'], [CPU_FALLBACK_LLM, 'q8']];
+    : [[m.repo, 'q8'], [m.repo, 'fp16'], [m.repo, 'fp32']];
   const errors: string[] = [];
   for (const [repo, dtype] of attempts) {
     try {
       const tok = await AutoTokenizer.from_pretrained(repo, { progress_callback: cb });
       const model = await AutoModelForCausalLM.from_pretrained(repo, { device, dtype: dtype as any, progress_callback: cb });
-      if (repo !== m.repo) console.warn(`Using ${repo} (${dtype}) because ${m.repo} has no CPU-compatible weights`);
+      console.info(`Rewrite model ${repo} loaded as ${dtype} on ${device}`);
       llm = { key, tok, model };
       return llm;
     } catch (e) {
