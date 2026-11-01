@@ -84,7 +84,6 @@ export interface LlmModel {
   id: string;
   repo: string;
   label: string;
-  dtype: string;
   approxMB: number;
   note: string;
   thinkingToggle?: boolean;
@@ -96,7 +95,6 @@ export const LLM_MODELS: LlmModel[] = [
     id: 'qwen3.5-0.8b',
     repo: 'onnx-community/Qwen3.5-0.8B-Text-ONNX',
     label: 'Qwen3.5 0.8B',
-    dtype: 'q4',
     approxMB: 600,
     note: 'Good rewrites, multilingual. Comfortable on laptops; heavy on phones.',
     thinkingToggle: true,
@@ -105,7 +103,6 @@ export const LLM_MODELS: LlmModel[] = [
     id: 'gemma-3-270m',
     repo: 'onnx-community/gemma-3-270m-it-ONNX',
     label: 'Gemma 3 270M',
-    dtype: 'q4',
     approxMB: 250,
     note: 'Tiny. Fine for cleanup/punctuation, weaker at tone changes.',
   },

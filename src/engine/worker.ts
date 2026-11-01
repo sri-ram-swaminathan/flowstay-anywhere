@@ -157,9 +157,20 @@ async function loadLlm(modelId: string) {
   if (llm) { await llm.model.dispose().catch(() => {}); llm = null; }
   const cb = progress('llm');
   const tok = await AutoTokenizer.from_pretrained(m.repo, { progress_callback: cb });
-  const model = await AutoModelForCausalLM.from_pretrained(m.repo, { device, dtype: m.dtype as any, progress_callback: cb });
-  llm = { key, tok, model };
-  return llm;
+  // 4-bit block-quantized weights only have GPU kernels; on CPU fall back to 8-bit variants.
+  const dtypes = device === 'webgpu' ? ['q4f16', 'q4', 'fp16'] : ['q8', 'int8', 'uint8', 'quantized'];
+  let lastErr: unknown;
+  for (const dtype of dtypes) {
+    try {
+      const model = await AutoModelForCausalLM.from_pretrained(m.repo, { device, dtype: dtype as any, progress_callback: cb });
+      llm = { key, tok, model };
+      return llm;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`LLM ${m.repo} ${dtype}/${device} unavailable:`, String(e).slice(0, 160));
+    }
+  }
+  throw lastErr;
 }
 
 async function rewrite(req: Extract<WorkerRequest, { type: 'rewrite' }>) {

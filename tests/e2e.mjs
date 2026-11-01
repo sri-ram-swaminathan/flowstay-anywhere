@@ -5,7 +5,7 @@
 import { chromium } from 'playwright';
 
 const [url = 'http://localhost:4173/', wav = 'jfk.wav'] = process.argv.slice(2);
-const ASR = (process.env.E2E_ASR || 'moonshine-base,moonshine-v2-small,whisper-base').split(',');
+const ASR = (process.env.E2E_ASR || 'moonshine-base,moonshine-v2-small,whisper-base,moonshine-tiny,whisper-large-v3-turbo').split(',');
 const LLM = (process.env.E2E_LLM || 'gemma-3-270m,qwen3.5-0.8b').split(',').filter(Boolean);
 const results = [];
 let failed = false;

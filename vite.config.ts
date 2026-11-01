@@ -17,8 +17,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 4000,
     rollupOptions: {
       input: tauri
-        ? { main: resolve(__dirname, 'index.html'), overlay: resolve(__dirname, 'overlay.html') }
-        : { main: resolve(__dirname, 'index.html') },
+        ? { main: resolve(import.meta.dirname, 'index.html'), overlay: resolve(import.meta.dirname, 'overlay.html') }
+        : { main: resolve(import.meta.dirname, 'index.html') },
     },
   },
   optimizeDeps: { exclude: ['@huggingface/transformers'] },
