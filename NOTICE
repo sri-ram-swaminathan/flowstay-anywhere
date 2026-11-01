@@ -12,4 +12,4 @@ It additionally uses:
 - Transformers.js / ONNX Runtime Web (Apache-2.0)
 - Tauri (Apache-2.0 / MIT)
 - Preact (MIT)
-- Models: Moonshine (MIT), Whisper (MIT), Qwen3.5 (Apache-2.0), Gemma 3 (Gemma Terms of Use)
+- Models: Moonshine (MIT), Whisper (MIT), Qwen3.5 (Apache-2.0)

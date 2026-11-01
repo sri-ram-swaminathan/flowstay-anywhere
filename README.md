@@ -23,7 +23,7 @@ Downloaded once on first use, cached, then fully offline. Pick in **Settings →
 | Whisper Base | 80 MB | 99 languages | Vocabulary is fed in as a decoding prompt (true biasing). |
 | Whisper Large v3 Turbo | 560 MB | 99 languages | Best multilingual; laptop with GPU only. |
 
-Personas can also run on-device (replacing Apple Intelligence): **Qwen3.5 0.8B** or **Gemma 3 270M**. Alternatives are **OpenRouter** (cloud, free models available) and **Claude Code** (Windows; uses your local `claude` CLI and your Pro/Max plan).
+Personas can also run on-device (replacing Apple Intelligence) with **Qwen3.5 0.8B**. This needs GPU acceleration (WebGPU), which current Windows laptops and iPhones have. Alternatives are **OpenRouter** (cloud, free models available) and **Claude Code** (Windows; uses your local `claude` CLI and your Pro/Max plan).
 
 ## Custom vocabulary (new)
 

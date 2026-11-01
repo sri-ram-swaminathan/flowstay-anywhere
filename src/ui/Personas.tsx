@@ -145,7 +145,7 @@ function Provider() {
           <Row label={ms.llm === 'ready' ? <span class="pill ok">✓ Model ready</span> : ms.llm === 'loading' ? <span class="pill blue">Downloading {Math.round(ms.progress * 100)}%</span> : ms.llm === 'error' ? <span class="pill err">Failed: {ms.error}</span> : <span class="pill">Downloads on first use</span>}>
             <button class="btn" disabled={ms.llm === 'loading' || ms.llm === 'ready'} onClick={() => c.loadLlm().catch(() => {})}>Download now</button>
           </Row>
-          {/iPhone|iPad/.test(navigator.userAgent) && <div class="hint">On iPhone, Safari may run out of memory with the larger model. Gemma 270M or OpenRouter is more reliable there.</div>}
+          {/iPhone|iPad/.test(navigator.userAgent) && <div class="hint">On iPhone, Safari can run out of memory loading a local model on older devices. If rewrites fail, use OpenRouter.</div>}
         </>
       )}
 

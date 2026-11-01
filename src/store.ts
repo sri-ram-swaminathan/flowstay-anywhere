@@ -97,7 +97,7 @@ export const DEFAULTS: Settings = {
   appRules: [],
   knownApps: [],
   provider: isPhone ? 'openrouter' : 'local',
-  localLlmModel: isPhone ? 'gemma-3-270m' : 'qwen3.5-0.8b',
+  localLlmModel: 'qwen3.5-0.8b',
   openRouterModel: 'meta-llama/llama-3.3-8b-instruct:free',
   claudeCodeModel: 'haiku',
   claudeCodeMode: 'rewrite',

@@ -99,13 +99,6 @@ export const LLM_MODELS: LlmModel[] = [
     note: 'Good rewrites, multilingual. Needs GPU acceleration (WebGPU).',
     thinkingToggle: true,
   },
-  {
-    id: 'gemma-3-270m',
-    repo: 'onnx-community/gemma-3-270m-it-ONNX',
-    label: 'Gemma 3 270M',
-    approxMB: 250,
-    note: 'Tiny. Fine for cleanup/punctuation, weaker at tone changes. Needs GPU acceleration (WebGPU).',
-  },
 ];
 
 export const findAsr = (id: string) => ASR_MODELS.find((m) => m.id === id) ?? ASR_MODELS[1];
