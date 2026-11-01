@@ -1,0 +1,15 @@
+Flowstay
+Copyright 2026
+
+This product includes software developed by third parties.
+
+- KeyboardShortcuts (https://github.com/sindresorhus/KeyboardShortcuts)
+- FluidAudio (https://github.com/FluidInference/FluidAudio)
+- Sparkle (https://github.com/sparkle-project/Sparkle)
+
+Flowstay Anywhere is a Windows/iPhone port of Flowstay (https://github.com/maketheproduct/flowstay).
+It additionally uses:
+- Transformers.js / ONNX Runtime Web (Apache-2.0)
+- Tauri (Apache-2.0 / MIT)
+- Preact (MIT)
+- Models: Moonshine (MIT), Whisper (MIT), Qwen3.5 (Apache-2.0), Gemma 3 (Gemma Terms of Use)
