@@ -17,7 +17,7 @@ const browser = await chromium.launch({
 async function page(settings) {
   const ctx = await browser.newContext({ permissions: ['microphone'], viewport: { width: 1100, height: 800 } });
   const p = await ctx.newPage();
-  p.on('console', (m) => m.type() === 'error' && console.log('  [console]', m.text().slice(0, 300)));
+  p.on('console', (m) => ['error', 'warning'].includes(m.type()) && console.log(`  [${m.type()}]`, m.text().slice(0, 300)));
   p.on('pageerror', (e) => console.log('  [pageerror]', e.message));
   await p.goto(url);
   await p.evaluate((s) => localStorage.setItem('flowstay.settings.v1', JSON.stringify(s)), { hasCompletedOnboarding: true, autoCopyEnabled: false, silenceTimeoutSeconds: 0, ...settings });

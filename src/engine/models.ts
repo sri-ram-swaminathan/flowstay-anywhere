@@ -96,7 +96,7 @@ export const LLM_MODELS: LlmModel[] = [
     repo: 'onnx-community/Qwen3.5-0.8B-Text-ONNX',
     label: 'Qwen3.5 0.8B',
     approxMB: 600,
-    note: 'Good rewrites, multilingual. Comfortable on laptops; heavy on phones.',
+    note: 'Good rewrites, multilingual. Needs GPU acceleration (on CPU-only devices Qwen2.5 0.5B is used instead).',
     thinkingToggle: true,
   },
   {

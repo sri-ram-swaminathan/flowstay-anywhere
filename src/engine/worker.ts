@@ -149,6 +149,8 @@ async function transcribe(req: Extract<WorkerRequest, { type: 'transcribe' }>) {
   return { text: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(), ms: performance.now() - t0 };
 }
 
+const CPU_FALLBACK_LLM = 'onnx-community/Qwen2.5-0.5B-Instruct';
+
 async function loadLlm(modelId: string) {
   const m = findLlm(modelId);
   const device = (await hasWebGPU()) ? 'webgpu' : 'wasm';
@@ -156,21 +158,24 @@ async function loadLlm(modelId: string) {
   if (llm?.key === key) return llm;
   if (llm) { await llm.model.dispose().catch(() => {}); llm = null; }
   const cb = progress('llm');
-  const tok = await AutoTokenizer.from_pretrained(m.repo, { progress_callback: cb });
-  // 4-bit block-quantized weights only have GPU kernels; on CPU fall back to 8-bit variants.
-  const dtypes = device === 'webgpu' ? ['q4f16', 'q4', 'fp16'] : ['q8', 'int8', 'uint8', 'quantized'];
-  let lastErr: unknown;
-  for (const dtype of dtypes) {
+  // Newer exports use 4-bit block-quantized embeddings that only have GPU kernels.
+  // On CPU-only devices try 8-bit variants, then a long-established CPU-friendly model.
+  const attempts: [string, string][] = device === 'webgpu'
+    ? [[m.repo, 'q4f16'], [m.repo, 'q4'], [m.repo, 'fp16']]
+    : [[m.repo, 'q8'], [m.repo, 'int8'], [CPU_FALLBACK_LLM, 'q8']];
+  const errors: string[] = [];
+  for (const [repo, dtype] of attempts) {
     try {
-      const model = await AutoModelForCausalLM.from_pretrained(m.repo, { device, dtype: dtype as any, progress_callback: cb });
+      const tok = await AutoTokenizer.from_pretrained(repo, { progress_callback: cb });
+      const model = await AutoModelForCausalLM.from_pretrained(repo, { device, dtype: dtype as any, progress_callback: cb });
+      if (repo !== m.repo) console.warn(`Using ${repo} (${dtype}) because ${m.repo} has no CPU-compatible weights`);
       llm = { key, tok, model };
       return llm;
     } catch (e) {
-      lastErr = e;
-      console.warn(`LLM ${m.repo} ${dtype}/${device} unavailable:`, String(e).slice(0, 160));
+      errors.push(`${repo.split('/')[1]} ${dtype}: ${String((e as any)?.message ?? e).slice(0, 120)}`);
     }
   }
-  throw lastErr;
+  throw new Error(`Couldn't load a rewrite model on ${device}. ${errors.join(' | ')}`);
 }
 
 async function rewrite(req: Extract<WorkerRequest, { type: 'rewrite' }>) {
