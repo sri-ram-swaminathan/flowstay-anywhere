@@ -14,6 +14,71 @@ import type { WorkerRequest, WorkerResponse } from './protocol';
 
 env.allowLocalModels = false;
 
+// ---- Model storage: plain files in the origin-private file system (OPFS).
+// Safari evicts/loses large Cache API entries; OPFS files persist. Falls back to the
+// browser cache where OPFS isn't available, and migrates files already in it.
+const fileName = (key: string) => key.replace(/^https?:\/\//, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+async function modelsDir() {
+  const root = await navigator.storage.getDirectory();
+  return root.getDirectoryHandle('models', { create: true });
+}
+const opfsCache = {
+  async match(key: string): Promise<Response | undefined> {
+    const name = fileName(String(key));
+    try {
+      const dir = await modelsDir();
+      await dir.getFileHandle(name + '.ok'); // written only after a complete download
+      const file = await (await dir.getFileHandle(name)).getFile();
+      return new Response(file, { headers: { 'content-length': String(file.size) } });
+    } catch {}
+    // migrate from the old browser cache if it's still there
+    try {
+      const old = await (await caches.open('transformers-cache')).match(String(key));
+      if (old) { await opfsCache.put(String(key), old.clone()); return old; }
+    } catch {}
+    return undefined;
+  },
+  async put(key: string, response: Response, progress?: (p: { progress: number; loaded: number; total: number }) => void) {
+    const name = fileName(String(key));
+    const dir = await modelsDir();
+    await dir.removeEntry(name + '.ok').catch(() => {});
+    const handle = await (await dir.getFileHandle(name, { create: true })).createSyncAccessHandle();
+    try {
+      handle.truncate(0);
+      const total = Number(response.headers.get('content-length')) || 0;
+      let loaded = 0;
+      const reader = response.body!.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        handle.write(value, { at: loaded });
+        loaded += value.length;
+        progress?.({ progress: total ? (loaded / total) * 100 : 0, loaded, total });
+      }
+      handle.flush();
+    } finally {
+      handle.close();
+    }
+    await dir.getFileHandle(name + '.ok', { create: true });
+  },
+};
+const opfsSupported = (async () => {
+  try {
+    const dir = await modelsDir();
+    const h = await (await dir.getFileHandle('.probe', { create: true })).createSyncAccessHandle();
+    h.close();
+    return true;
+  } catch {
+    return false;
+  }
+})();
+opfsSupported.then((ok) => {
+  if (!ok) return;
+  env.useBrowserCache = false;
+  env.useCustomCache = true;
+  env.customCache = opfsCache as any;
+});
+
 const post = (msg: WorkerResponse) => (self as unknown as Worker).postMessage(msg);
 
 let asr: { key: string; pipe: AutomaticSpeechRecognitionPipeline; model: AsrModel; device: string } | null = null;
@@ -203,6 +268,7 @@ async function rewrite(req: Extract<WorkerRequest, { type: 'rewrite' }>) {
 
 self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   const req = ev.data;
+  await opfsSupported;
   try {
     switch (req.type) {
       case 'loadAsr': {

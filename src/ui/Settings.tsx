@@ -145,6 +145,7 @@ function Troubleshooting() {
   const clearModels = async () => {
     if (!confirmAsk('Delete downloaded models? They will download again next time.')) return;
     for (const k of await caches.keys()) if (k.includes('transformers')) await caches.delete(k);
+    await (await navigator.storage.getDirectory()).removeEntry('models', { recursive: true }).catch(() => {});
     c.modelState.set({ asr: 'unknown', llm: 'unknown', progress: 0 });
     toast('Model cache cleared');
     log('Model cache cleared');
@@ -162,6 +163,7 @@ function Troubleshooting() {
         </Row>
         <Row label="GPU acceleration (WebGPU)"><span class={`pill ${gpu ? 'ok' : ''}`}>{gpu === null ? '…' : gpu ? 'Available' : 'Not available (CPU used)'}</span></Row>
         <Row label="Reload speech model" hint="Fixes most 'model failed' errors."><button class="btn" onClick={() => c.loadAsr().then(() => toast('Model reloaded')).catch((e) => toast(String(e)))}>Reload</button></Row>
+        <StorageRow />
         <Row label="Delete downloaded models"><button class="btn" onClick={clearModels}>Clear cache</button></Row>
         <Row label="Diagnostics log">
           <span class="inline">
@@ -184,5 +186,21 @@ function Troubleshooting() {
         {update && <div class="banner" style="margin-top:10px">{update}</div>}
       </div>
     </>
+  );
+}
+
+function StorageRow() {
+  const [info, setInfo] = useState<{ mb: number; persisted: boolean } | null>(null);
+  useEffect(() => {
+    (async () => {
+      const est = await navigator.storage?.estimate?.().catch(() => null);
+      const persisted = (await navigator.storage?.persisted?.().catch(() => false)) ?? false;
+      setInfo({ mb: Math.round((est?.usage ?? 0) / 1048576), persisted });
+    })();
+  }, []);
+  return (
+    <Row label="Saved models & data" hint={info && !info.persisted && platform().kind === 'web' ? 'Not marked persistent yet. On iPhone, open Flowstay from the Home Screen icon, not a Safari tab, so its storage is kept.' : undefined}>
+      <span class={`pill ${info?.persisted ? 'ok' : ''}`}>{info ? `${info.mb} MB${info.persisted ? ' · kept permanently' : ''}` : '…'}</span>
+    </Row>
   );
 }

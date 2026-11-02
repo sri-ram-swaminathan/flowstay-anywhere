@@ -13,6 +13,8 @@ export interface Platform {
   /** Put text where the user wants it. Returns true if it was auto-pasted into another app. */
   deliver(text: string, opts: { autoPaste: boolean; autoCopy: boolean; keepOnClipboard: boolean }): Promise<'pasted' | 'copied' | 'none'>;
   copy(text: string): Promise<boolean>;
+  /** Start a clipboard write now (inside a tap) and fill in the text later. Web only. */
+  prepareCopy?(): { resolve(text: string): Promise<boolean>; cancel(): void } | null;
   frontApp(): Promise<FrontApp | null>;
   claudeAvailable(): Promise<boolean>;
   runClaude(args: string[], stdin: string, timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }>;

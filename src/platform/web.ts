@@ -38,6 +38,22 @@ export function webPlatform(): Platform {
       return 'none';
     },
     copy,
+    prepareCopy() {
+      // Safari only allows clipboard writes that begin during a user gesture. A ClipboardItem
+      // whose content is a promise lets us start the write on "stop" and supply the text when
+      // transcription finishes.
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return null;
+      let done!: (t: string) => void, fail!: (e: Error) => void;
+      const text = new Promise<string>((res, rej) => { done = res; fail = rej; });
+      text.catch(() => {});
+      const written = navigator.clipboard
+        .write([new ClipboardItem({ 'text/plain': text.then((t) => new Blob([t], { type: 'text/plain' })) })])
+        .then(() => true, () => false);
+      return {
+        resolve: (t: string) => { done(t); return written; },
+        cancel: () => fail(new Error('cancelled')),
+      };
+    },
     frontApp: async () => null,
     claudeAvailable: async () => false,
     runClaude: async () => ({ code: 1, stdout: '', stderr: 'Claude Code is only available in the Windows app.' }),

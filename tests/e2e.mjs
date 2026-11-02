@@ -16,12 +16,13 @@ const WEBGPU = ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--enable-fe
 let browser = await chromium.launch({ args: MEDIA });
 
 async function page(settings) {
-  const ctx = await browser.newContext({ permissions: ['microphone'], viewport: { width: 1100, height: 800 } });
+  const ctx = await browser.newContext({ permissions: ['microphone', 'clipboard-read', 'clipboard-write'], viewport: { width: 1100, height: 800 } });
   const p = await ctx.newPage();
   p.on('console', (m) => ['error', 'warning'].includes(m.type()) && console.log(`  [${m.type()}]`, m.text().slice(0, 300)));
   p.on('pageerror', (e) => console.log('  [pageerror]', e.message));
   await p.goto(url);
   await p.evaluate((s) => localStorage.setItem('flowstay.settings.v1', JSON.stringify(s)), { hasCompletedOnboarding: true, autoCopyEnabled: false, silenceTimeoutSeconds: 0, ...settings });
+  await p.bringToFront();
   await p.reload();
   return p;
 }
@@ -50,6 +51,30 @@ for (const model of ASR) {
 
 const llmRuns = [];
 for (const llm of LLM) llmRuns.push([llm, 'gpu']);
+
+// Storage + clipboard: model must load offline after a reload, and the text must be on the clipboard.
+{
+  const p = await page({ asrModel: 'moonshine-base', autoCopyEnabled: true });
+  try {
+    await p.waitForSelector('text=· CPU', { timeout: 300_000 });
+    await p.route(/huggingface\.co|hf\.co/, (r) => r.abort());
+    await p.reload();
+    await p.waitForSelector('text=· CPU', { timeout: 60_000 });
+    const offline = true;
+    await p.click('.mic');
+    await p.waitForTimeout(12_000);
+    await p.click('.mic');
+    await p.waitForSelector('.result-text', { timeout: 120_000 });
+    const clip = await p.evaluate(() => navigator.clipboard.readText());
+    const ok = offline && /ask not what/i.test(clip);
+    results.push({ model: 'offline reload + clipboard', ok, text: `clipboard: ${clip}` });
+    if (!ok) failed = true;
+  } catch (e) {
+    failed = true;
+    results.push({ model: 'offline reload + clipboard', ok: false, error: String(e).slice(0, 300) });
+  }
+  await p.context().close();
+}
 for (const [llm, dev] of llmRuns) {
   await browser.close();
   browser = await chromium.launch({ args: dev === 'gpu' ? [...MEDIA, ...WEBGPU] : MEDIA });

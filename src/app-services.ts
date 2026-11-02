@@ -49,6 +49,8 @@ export async function boot() {
   const s = settings.get();
   const p = platform();
   log(`Starting ${VERSION} on ${p.kind}`);
+  // ask the browser not to evict our storage (models, history)
+  (navigator as any).storage?.persist?.().then((ok: boolean) => log(`Persistent storage: ${ok ? 'granted' : 'not granted'}`)).catch(() => {});
 
   // finish an OpenRouter redirect sign-in (web)
   const q = new URLSearchParams(location.search);

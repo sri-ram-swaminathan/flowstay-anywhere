@@ -33,6 +33,7 @@ const recorder = new Recorder({
 });
 
 let target: FrontApp | null = null;
+let pendingCopy: { resolve(text: string): Promise<boolean>; cancel(): void } | null = null;
 // Holding a Web Lock keeps a hidden window (Windows tray mode) from being throttled mid-dictation.
 let releaseLock: (() => void) | null = null;
 const holdLock = () => (navigator as any).locks?.request('flowstay-active', () => new Promise<void>((r) => (releaseLock = r))).catch(() => {});
@@ -94,10 +95,15 @@ export async function stop(): Promise<void> {
   if (status.get() !== 'recording') return;
   clearInterval(tick);
   const s = settings.get();
+  // must happen synchronously in the tap that stopped recording (iPhone clipboard rule)
+  pendingCopy?.cancel();
+  pendingCopy = s.autoCopyEnabled ? platform().prepareCopy?.() ?? null : null;
   const { audio, duration } = await recorder.stop();
   if (s.soundFeedbackEnabled) sounds.stop();
   level.set(0);
   if (duration < 0.3 || isMostlySilent(audio)) {
+    pendingCopy?.cancel();
+    pendingCopy = null;
     await recovery.clear();
     status.set('idle');
     dropLock();
@@ -110,6 +116,8 @@ export async function stop(): Promise<void> {
 
 export function cancel() {
   clearInterval(tick);
+  pendingCopy?.cancel();
+  pendingCopy = null;
   dropLock();
   recorder.cancel();
   recovery.clear();
@@ -157,7 +165,7 @@ export async function process(audio: Float32Array, duration: number, app: FrontA
     // persona
     const persona = resolvePersona(app);
     // Copy what you said right away; a persona rewrite (if any) replaces it when ready.
-    if (persona && (s.autoCopyEnabled || p.kind === 'windows')) await p.copy(text);
+    if (persona && p.kind === 'windows') await p.copy(text);
     let processed = text;
     let wasProcessed = false;
     if (persona) {
@@ -183,7 +191,9 @@ export async function process(audio: Float32Array, duration: number, app: FrontA
     await recovery.clear();
 
     // Only auto-paste when dictation started in another app; from inside Flowstay just copy.
-    const how = await p.deliver(processed, { autoPaste: s.autoPasteEnabled && !!app, autoCopy: s.autoCopyEnabled || p.kind === 'windows', keepOnClipboard: s.keepOnClipboard });
+    const armed = pendingCopy;
+    pendingCopy = null;
+    const how = armed && (await armed.resolve(processed)) ? 'copied' : await p.deliver(processed, { autoPaste: s.autoPasteEnabled && !!app, autoCopy: s.autoCopyEnabled || p.kind === 'windows', keepOnClipboard: s.keepOnClipboard });
     if (how === 'none' && s.autoCopyEnabled) p.notify('Not copied', 'Your browser blocked the clipboard. Tap the copy button next to the text.');
     p.overlay({ status: 'done', text: how === 'pasted' ? 'Pasted' : how === 'copied' ? 'Copied' : 'Done' });
     setTimeout(() => status.get() === 'idle' && p.overlay({ status: 'hidden' }), 900);
@@ -223,6 +233,8 @@ function rememberApp(app: FrontApp) {
 
 function fail(msg: string) {
   clearInterval(tick);
+  pendingCopy?.cancel();
+  pendingCopy = null;
   dropLock();
   log(`Error: ${msg}`);
   lastError.set(msg);
