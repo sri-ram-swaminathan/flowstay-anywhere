@@ -2,14 +2,16 @@
 
 A port of [Flowstay](https://github.com/maketheproduct/flowstay) (macOS menu-bar dictation) to **Windows** and **iPhone**, with on-device speech recognition and a new **custom vocabulary** feature.
 
-One TypeScript codebase runs as:
+One TypeScript codebase runs as a Windows app, an Android app, an iPhone app, and a web app. All downloads are on the [Releases](../../releases/latest) page.
 
-| | Windows | iPhone |
-|---|---|---|
-| Install | `.exe` installer from [Releases](../../releases/latest) | Open **https://sri-ram-swaminathan.github.io/flowstay-anywhere/** in Safari → Share → **Add to Home Screen** |
-| Start dictating | Global hotkey (toggle `Alt+Space`, hold-to-talk `Ctrl+Shift+Space`), tray menu, or the app | Big mic button |
-| Where the text goes | Pasted into the app you're typing in (clipboard restored afterwards) | Copied to clipboard, plus Copy / Share buttons |
-| Speech engine | On-device (Transformers.js / ONNX Runtime, WebGPU or CPU) | On-device (same engine, same models) |
+| | Install | Start dictating | Where the text goes |
+|---|---|---|---|
+| **Windows** | `Flowstay_x.y.z_x64-setup.exe` | Global hotkey (`Alt+Space` toggle, `Ctrl+Shift+Space` hold), tray, or app | Pasted into the app you're typing in, and kept on the clipboard |
+| **Android** | `Flowstay_x.y.z_android.apk`: open it on the phone, allow "install unknown apps" | Mic button | Copied to the clipboard instantly |
+| **iPhone** | `Flowstay_x.y.z_ios-unsigned.ipa` via [Sideloadly](https://sideloadly.io) (Windows/Mac) with your Apple ID; free IDs must re-sign every 7 days | Mic button | Copied to the clipboard instantly |
+| Web | https://sri-ram-swaminathan.github.io/flowstay-anywhere/ | Mic button | Copied to the clipboard |
+
+In the apps, model files are stored as native files in the app's data folder, so they download once and are never evicted (unlike the browser cache on iOS).
 
 ## On-device models
 
