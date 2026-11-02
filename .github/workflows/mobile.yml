@@ -1,0 +1,107 @@
+name: Phone apps
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.2.12479018
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android" }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+      - name: Generate Android project
+        run: |
+          export NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION
+          npx tauri android init --ci
+          M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <application#' $M
+          grep -n "permission" $M
+      - name: Build APK
+        run: |
+          export NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION
+          npx tauri android build --apk --target aarch64
+      - name: Sign APK
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          APK=$(find src-tauri/gen/android -name "*release-unsigned.apk" | head -1)
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > ks.jks
+          else
+            echo "::warning::No ANDROID_KEYSTORE_B64 secret: signing with a throwaway key (uninstall before installing the next build)."
+            KS_PASS=throwaway
+            keytool -genkeypair -keystore ks.jks -storepass "$KS_PASS" -keypass "$KS_PASS" -alias flowstay -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Flowstay"
+          fi
+          BT=$ANDROID_HOME/build-tools/34.0.0
+          $BT/zipalign -f 4 "$APK" aligned.apk
+          $BT/apksigner sign --ks ks.jks --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" --ks-key-alias flowstay --out "Flowstay_${VERSION}_android.apk" aligned.apk
+          rm ks.jks
+          echo "APK_FILE=Flowstay_${VERSION}_android.apk" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with: { name: flowstay-android, path: "${{ env.APK_FILE }}" }
+      - name: Attach to release
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          for i in 1 2 3 4 5 6; do gh release view "v$VERSION" >/dev/null 2>&1 && break; sleep 60; done
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "Flowstay Anywhere v$VERSION" --notes "See README for install steps."
+          gh release upload "v$VERSION" "$APK_FILE" --clobber
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: aarch64-apple-ios }
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri }
+      - run: npm ci
+      - run: brew install xcodegen cocoapods || true
+      - name: Generate Xcode project
+        run: |
+          npx tauri ios init --ci
+          PLIST=$(find src-tauri/gen/apple -name Info.plist -path "*_iOS*" | head -1)
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Flowstay listens only while you dictate and transcribes on your device.'" "$PLIST" || true
+          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | head -40
+      - name: Build unsigned app
+        run: |
+          # Archive without code signing; Sideloadly/AltStore re-sign it with your Apple ID.
+          npx tauri ios build --ci -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" || echo "tauri ios build exited non-zero (expected at the signed export step)"
+          APP=$(find src-tauri/gen/apple/build -path "*.xcarchive/Products/Applications/*.app" -maxdepth 6 | head -1)
+          if [ -z "$APP" ]; then APP=$(find src-tauri/gen/apple -name "*.app" -path "*iphoneos*" | head -1); fi
+          echo "app: $APP"
+          test -n "$APP"
+          VERSION=$(node -p "require('./package.json').version")
+          mkdir -p Payload && cp -R "$APP" Payload/
+          zip -qr "Flowstay_${VERSION}_ios-unsigned.ipa" Payload
+          echo "IPA_FILE=Flowstay_${VERSION}_ios-unsigned.ipa" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+      - uses: actions/upload-artifact@v4
+        with: { name: flowstay-ios, path: "${{ env.IPA_FILE }}" }
+      - name: Attach to release
+        env: { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+        run: |
+          for i in 1 2 3 4 5 6; do gh release view "v$VERSION" >/dev/null 2>&1 && break; sleep 60; done
+          gh release view "v$VERSION" >/dev/null 2>&1 || gh release create "v$VERSION" --title "Flowstay Anywhere v$VERSION" --notes "See README for install steps."
+          gh release upload "v$VERSION" "$IPA_FILE" --clobber

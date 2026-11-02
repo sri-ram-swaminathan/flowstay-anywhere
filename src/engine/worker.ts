@@ -14,6 +14,47 @@ import type { WorkerRequest, WorkerResponse } from './protocol';
 
 env.allowLocalModels = false;
 
+// ---- native model storage (apps): cache calls are forwarded to the main thread → Rust → files
+let cacheSeq = 0;
+const cacheWaiters = new Map<number, (r: { ok: boolean; data: ArrayBuffer | null }) => void>();
+function cacheRpc(op: 'get' | 'put', key: string, data?: ArrayBuffer) {
+  const cid = ++cacheSeq;
+  return new Promise<{ ok: boolean; data: ArrayBuffer | null }>((resolve) => {
+    cacheWaiters.set(cid, resolve);
+    (self as unknown as Worker).postMessage({ type: 'cacheReq', cid, op, key, data }, data ? [data] : []);
+  });
+}
+const nativeCache = {
+  async match(key: string) {
+    const r = await cacheRpc('get', String(key));
+    if (!r.ok || !r.data) return undefined;
+    return new Response(r.data, { headers: { 'content-length': String(r.data.byteLength) } });
+  },
+  async put(key: string, response: Response, progress?: (p: { progress: number; loaded: number; total: number }) => void) {
+    const total = Number(response.headers.get('content-length')) || 0;
+    let buf: ArrayBuffer;
+    if (progress && response.body) {
+      const reader = response.body.getReader();
+      const parts: Uint8Array[] = [];
+      let loaded = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value);
+        loaded += value.length;
+        progress({ progress: total ? (loaded / total) * 100 : 0, loaded, total });
+      }
+      const out = new Uint8Array(loaded);
+      let o = 0;
+      for (const p of parts) { out.set(p, o); o += p.length; }
+      buf = out.buffer;
+    } else {
+      buf = await response.arrayBuffer();
+    }
+    await cacheRpc('put', String(key), buf); // buf is our own copy, safe to transfer
+  },
+};
+
 const post = (msg: WorkerResponse) => (self as unknown as Worker).postMessage(msg);
 
 let asr: { key: string; pipe: AutomaticSpeechRecognitionPipeline; model: AsrModel; device: string } | null = null;
@@ -201,10 +242,24 @@ async function rewrite(req: Extract<WorkerRequest, { type: 'rewrite' }>) {
   return text;
 }
 
-self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
-  const req = ev.data;
+self.onmessage = async (ev: MessageEvent<any>) => {
+  const req = ev.data as WorkerRequest;
+  if ((ev.data as any).type === 'cacheRes') {
+    const { cid, ok, data } = ev.data;
+    cacheWaiters.get(cid)?.({ ok, data });
+    cacheWaiters.delete(cid);
+    return;
+  }
   try {
     switch (req.type) {
+      case 'config':
+        if (req.nativeCache) {
+          env.useBrowserCache = false;
+          env.useCustomCache = true;
+          env.customCache = nativeCache as any;
+        }
+        post({ id: req.id, type: 'ok', result: true });
+        break;
       case 'loadAsr': {
         const a = await loadAsr(req.modelId, req.device);
         post({ id: req.id, type: 'ok', result: { device: a.device } });

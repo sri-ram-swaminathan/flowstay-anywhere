@@ -17,6 +17,7 @@ export function tauriPlatform(): Platform {
   return {
     kind: 'windows',
     isStandalone: true,
+    modelStore: nativeModelStore(),
     async deliver(text, o) {
       if (o.autoPaste) {
         try {
@@ -79,5 +80,17 @@ export function tauriPlatform(): Platform {
     },
     showMain: () => { invoke('show_main').catch(() => {}); },
     onTray(cb) { listen<string>('tray-action', (e) => cb(e.payload)); },
+  };
+}
+
+export function nativeModelStore() {
+  return {
+    async get(key: string) {
+      try { return await invoke<ArrayBuffer>('model_cache_get', { key }); } catch { return null; }
+    },
+    async put(key: string, data: ArrayBuffer) {
+      await invoke('model_cache_put', new Uint8Array(data), { headers: { 'x-key': encodeURIComponent(key) } });
+    },
+    clear: () => invoke<void>('model_cache_clear').catch(() => {}),
   };
 }

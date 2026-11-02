@@ -93,7 +93,7 @@ export function Personas() {
             )}
           </>
         ) : (
-          <div class="meta">On iPhone the text goes to your clipboard, so per-app routing isn't possible. Pick a persona above before you dictate, or use this on your Windows laptop.</div>
+          <div class="meta">On your phone the text goes to the clipboard, so per-app routing isn't possible. Pick a persona above before you dictate, or use this on your Windows laptop.</div>
         )}
       </div>
 
@@ -157,15 +157,15 @@ function Provider() {
             </Row>
           ) : (
             <>
-              <Row label="Connect your OpenRouter account" hint="Free models available. Opens a sign-in page.">
+              {(p.kind === 'windows' || p.kind === 'web') && <Row label="Connect your OpenRouter account" hint="Free models available. Opens a sign-in page.">
                 <button class="btn primary" disabled={connecting} onClick={async () => {
                   setConnecting(true);
                   try { await openRouter.connect(); toast('OpenRouter connected'); } catch (e: any) { toast(String(e.message ?? e)); }
                   setConnecting(false);
                   force((n) => n + 1);
                 }}>{connecting ? 'Waiting for browser…' : 'Connect'}</button>
-              </Row>
-              <Row label="…or paste an API key">
+              </Row>}
+              <Row label={p.kind === 'windows' || p.kind === 'web' ? '…or paste an API key' : 'Paste an OpenRouter API key'} hint={p.kind === 'android' || p.kind === 'ios' ? 'Create one (free) at openrouter.ai/keys.' : undefined}>
                 <span class="inline">
                   <input type="password" placeholder="sk-or-…" value={manualKey} onInput={(e) => setManualKey((e.target as HTMLInputElement).value)} />
                   <button class="btn" disabled={!manualKey} onClick={() => { openRouter.setKey(manualKey); setManualKey(''); force((n) => n + 1); }}>Save</button>

@@ -1,0 +1,14 @@
+{
+  "identifier": "io.github.sriramswaminathan.flowstay",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Flowstay",
+        "url": "index.html",
+        "visible": true,
+        "useHttpsScheme": true
+      }
+    ]
+  }
+}
