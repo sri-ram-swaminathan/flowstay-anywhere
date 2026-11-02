@@ -11,7 +11,7 @@ export interface Platform {
   kind: 'windows' | 'web';
   isStandalone: boolean;
   /** Put text where the user wants it. Returns true if it was auto-pasted into another app. */
-  deliver(text: string, opts: { autoPaste: boolean; autoCopy: boolean; restoreClipboard: boolean }): Promise<'pasted' | 'copied' | 'none'>;
+  deliver(text: string, opts: { autoPaste: boolean; autoCopy: boolean; keepOnClipboard: boolean }): Promise<'pasted' | 'copied' | 'none'>;
   copy(text: string): Promise<boolean>;
   frontApp(): Promise<FrontApp | null>;
   claudeAvailable(): Promise<boolean>;

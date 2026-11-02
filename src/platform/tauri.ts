@@ -20,7 +20,7 @@ export function tauriPlatform(): Platform {
     async deliver(text, o) {
       if (o.autoPaste) {
         try {
-          const ok = await invoke<boolean>('paste_text', { text, restore: o.restoreClipboard });
+          const ok = await invoke<boolean>('paste_text', { text, restore: !o.keepOnClipboard });
           if (ok) return 'pasted';
         } catch (e) {
           console.warn('paste failed', e);

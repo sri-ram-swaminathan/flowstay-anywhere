@@ -30,7 +30,8 @@ export interface Settings {
   // output
   autoPasteEnabled: boolean;
   autoCopyEnabled: boolean;
-  restoreClipboard: boolean;
+  /** After auto-pasting, leave the transcript on the clipboard (instead of restoring what was there). */
+  keepOnClipboard: boolean;
   // feedback
   soundFeedbackEnabled: boolean;
   showOverlay: boolean;
@@ -82,7 +83,7 @@ export const DEFAULTS: Settings = {
   silenceTimeoutSeconds: 30,
   autoPasteEnabled: true,
   autoCopyEnabled: true,
-  restoreClipboard: true,
+  keepOnClipboard: true,
   soundFeedbackEnabled: true,
   showOverlay: true,
   hotkeyPressMode: 'both',

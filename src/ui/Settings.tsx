@@ -85,8 +85,8 @@ export function Settings() {
       <h3>Output</h3>
       <div class="card">
         {win && <Row label="Paste into the active app" hint="Types the result where your cursor is (simulates Ctrl+V)."><Toggle checked={s.autoPasteEnabled} onChange={(v) => settings.set({ autoPasteEnabled: v })} /></Row>}
-        {win && s.autoPasteEnabled && <Row label="Restore clipboard after pasting"><Toggle checked={s.restoreClipboard} onChange={(v) => settings.set({ restoreClipboard: v })} /></Row>}
-        <Row label="Copy result to clipboard" hint={win ? 'Used when auto-paste is off.' : 'Paste it into any app afterwards. iOS sometimes blocks this; the copy button always works.'}>
+        {win && s.autoPasteEnabled && <Row label="Keep transcript on clipboard after pasting" hint="Off: your previous clipboard is put back after the paste."><Toggle checked={s.keepOnClipboard} onChange={(v) => settings.set({ keepOnClipboard: v })} /></Row>}
+        <Row label="Copy result to clipboard" hint={win ? 'Always on when you dictate from inside Flowstay.' : 'Paste it into any app afterwards. iOS sometimes blocks this; the copy button always works.'}>
           <Toggle checked={s.autoCopyEnabled} onChange={(v) => settings.set({ autoCopyEnabled: v })} />
         </Row>
         {win && <Row label="Show recording overlay" hint="A small bubble at the bottom of the screen while you dictate."><Toggle checked={s.showOverlay} onChange={(v) => settings.set({ showOverlay: v })} /></Row>}

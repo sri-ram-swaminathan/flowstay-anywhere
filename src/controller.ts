@@ -156,6 +156,8 @@ export async function process(audio: Float32Array, duration: number, app: FrontA
 
     // persona
     const persona = resolvePersona(app);
+    // Copy what you said right away; a persona rewrite (if any) replaces it when ready.
+    if (persona && (s.autoCopyEnabled || p.kind === 'windows')) await p.copy(text);
     let processed = text;
     let wasProcessed = false;
     if (persona) {
@@ -180,7 +182,9 @@ export async function process(audio: Float32Array, duration: number, app: FrontA
     lastResult.set(rec);
     await recovery.clear();
 
-    const how = await p.deliver(processed, { autoPaste: s.autoPasteEnabled, autoCopy: s.autoCopyEnabled, restoreClipboard: s.restoreClipboard });
+    // Only auto-paste when dictation started in another app; from inside Flowstay just copy.
+    const how = await p.deliver(processed, { autoPaste: s.autoPasteEnabled && !!app, autoCopy: s.autoCopyEnabled || p.kind === 'windows', keepOnClipboard: s.keepOnClipboard });
+    if (how === 'none' && s.autoCopyEnabled) p.notify('Not copied', 'Your browser blocked the clipboard. Tap the copy button next to the text.');
     p.overlay({ status: 'done', text: how === 'pasted' ? 'Pasted' : how === 'copied' ? 'Copied' : 'Done' });
     setTimeout(() => status.get() === 'idle' && p.overlay({ status: 'hidden' }), 900);
     status.set('idle');
