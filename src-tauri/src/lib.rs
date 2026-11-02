@@ -14,7 +14,9 @@ use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 #[cfg(desktop)]
 use tauri::PhysicalPosition;
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(desktop)]
+use tauri::WindowEvent;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,6 +340,10 @@ fn url_decode(s: &str) -> String {
 
 // ---------------------------------------------------------------- windows
 
+#[cfg(mobile)]
+fn show_main_window(_app: &AppHandle) {}
+
+#[cfg(desktop)]
 fn show_main_window(app: &AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
@@ -381,9 +387,12 @@ fn show_overlay(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn hide_overlay(app: AppHandle) {
+    #[cfg(desktop)]
     if let Some(w) = app.get_webview_window("overlay") {
         let _ = w.hide();
     }
+    #[cfg(mobile)]
+    let _ = app;
 }
 
 // ---------------------------------------------------------------- persistent model cache
@@ -520,14 +529,13 @@ pub fn run() {
             }
             Ok(())
         })
-        .on_window_event(|window, event| {
+        .on_window_event(|_window, _event| {
             // closing the main window keeps Flowstay running in the tray (desktop)
-            if cfg!(desktop) {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    if window.label() == "main" {
-                        api.prevent_close();
-                        let _ = window.hide();
-                    }
+            #[cfg(desktop)]
+            if let WindowEvent::CloseRequested { api, .. } = _event {
+                if _window.label() == "main" {
+                    api.prevent_close();
+                    let _ = _window.hide();
                 }
             }
         })

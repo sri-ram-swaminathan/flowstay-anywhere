@@ -89,10 +89,14 @@ jobs:
       - name: Build unsigned app
         run: |
           # Archive without code signing; Sideloadly/AltStore re-sign it with your Apple ID.
-          npx tauri ios build --ci || echo "tauri ios build exited non-zero (expected at the signed export step)"
+          npx tauri ios build --ci 2>&1 | tee build.log || true
+          if grep -q "BUILD FAILED\|failed to compile" build.log; then echo "::error::iOS compile failed"; exit 1; fi
           APP=$(find src-tauri/gen/apple ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" \( -path "*.xcarchive/Products/Applications/*" -o -path "*iphoneos*" \) 2>/dev/null | grep -v "\.app/" | head -1)
           echo "app: $APP"
           test -n "$APP"
+          BIN="$APP/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$APP/Info.plist")"
+          ls -la "$BIN"
+          test $(stat -f%z "$BIN") -gt 1000000
           VERSION=$(node -p "require('./package.json').version")
           mkdir -p Payload && cp -R "$APP" Payload/
           zip -qr "Flowstay_${VERSION}_ios-unsigned.ipa" Payload
