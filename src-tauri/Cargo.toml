@@ -1,6 +1,6 @@
 [package]
 name = "flowstay"
-version = "0.1.2"
+version = "0.1.1"
 description = "Flowstay Anywhere - on-device dictation for Windows"
 edition = "2021"
 
@@ -13,16 +13,13 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
-tauri-plugin-notification = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-clipboard-manager = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-
-[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 arboard = "3"
 
 [target.'cfg(windows)'.dependencies]

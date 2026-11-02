@@ -145,7 +145,6 @@ function Troubleshooting() {
   const clearModels = async () => {
     if (!confirmAsk('Delete downloaded models? They will download again next time.')) return;
     for (const k of await caches.keys()) if (k.includes('transformers')) await caches.delete(k);
-    await platform().modelStore?.clear();
     c.modelState.set({ asr: 'unknown', llm: 'unknown', progress: 0 });
     toast('Model cache cleared');
     log('Model cache cleared');
@@ -155,7 +154,7 @@ function Troubleshooting() {
     <>
       <h3>Permissions &amp; troubleshooting</h3>
       <div class="card">
-        <Row label="Microphone" hint={mic === 'denied' ? ({ web: 'Blocked. iPhone: Settings → Safari → Microphone → Allow, then reopen.', ios: 'Blocked. iPhone Settings → Flowstay → Microphone.', android: 'Blocked. Android Settings → Apps → Flowstay → Permissions → Microphone.', windows: 'Blocked. Windows: Settings → Privacy & security → Microphone → allow desktop apps.' } as const)[platform().kind] : undefined}>
+        <Row label="Microphone" hint={mic === 'denied' ? (platform().kind === 'web' ? 'Blocked. iPhone: Settings → Safari → Microphone → Allow, then reopen.' : 'Blocked. Windows: Settings → Privacy & security → Microphone → allow desktop apps.') : undefined}>
           <span class="inline">
             <span class={`pill ${mic === 'granted' ? 'ok' : mic === 'denied' ? 'err' : 'warn'}`}>{mic === 'granted' ? 'Allowed' : mic === 'denied' ? 'Blocked' : 'Not asked yet'}</span>
             {mic !== 'granted' && <button class="btn" onClick={async () => { const ok = await Recorder.requestPermission(); setMic(ok ? 'granted' : 'denied'); }}>Request</button>}
@@ -178,7 +177,7 @@ function Troubleshooting() {
 
       <h3>Updates</h3>
       <div class="card">
-        <Row label={`Version ${VERSION}`} hint={platform().kind === 'web' ? 'The web app updates itself when you reopen it.' : platform().kind !== 'windows' ? 'New versions are on the GitHub Releases page.' : undefined}>
+        <Row label={`Version ${VERSION}`} hint={platform().kind === 'web' ? 'The iPhone app updates itself when you reopen it.' : undefined}>
           {platform().kind === 'windows' && <button class="btn" onClick={async () => setUpdate(await checkForUpdate(true))}>Check now</button>}
         </Row>
         {platform().kind === 'windows' && <Row label="Check for updates automatically"><Toggle checked={s.checkForUpdates} onChange={(v) => settings.set({ checkForUpdates: v })} /></Row>}

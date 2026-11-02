@@ -132,7 +132,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
           )}
         </div>
       ))}
-      {p.kind !== 'windows' && <p class="hint" style="text-align:center">After each dictation the text is copied automatically{settings.get().autoCopyEnabled ? '' : ' (turned off)'}. Paste it anywhere.</p>}
+      {p.kind === 'web' && <p class="hint" style="text-align:center">After each dictation the text is copied automatically{settings.get().autoCopyEnabled ? '' : ' (turned off)'}. Paste it anywhere.</p>}
     </div>
   );
 }

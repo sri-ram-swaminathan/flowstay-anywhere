@@ -7,12 +7,8 @@ export interface OverlayState {
   persona?: string;
 }
 
-import type { ModelStore } from '../engine/protocol';
-
 export interface Platform {
-  kind: 'windows' | 'web' | 'android' | 'ios';
-  /** Native, never-evicted storage for model files (apps only). */
-  modelStore?: ModelStore & { clear(): Promise<void> };
+  kind: 'windows' | 'web';
   isStandalone: boolean;
   /** Put text where the user wants it. Returns true if it was auto-pasted into another app. */
   deliver(text: string, opts: { autoPaste: boolean; autoCopy: boolean; keepOnClipboard: boolean }): Promise<'pasted' | 'copied' | 'none'>;
@@ -40,13 +36,7 @@ export const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNA
 
 let impl: Platform;
 export async function initPlatform(): Promise<Platform> {
-  if (isTauri) {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const kind = await invoke<string>('platform_kind').catch(() => 'windows');
-    impl = kind === 'windows' ? (await import('./tauri')).tauriPlatform() : (await import('./mobile')).mobilePlatform(kind as 'android' | 'ios');
-  } else {
-    impl = (await import('./web')).webPlatform();
-  }
+  impl = isTauri ? (await import('./tauri')).tauriPlatform() : (await import('./web')).webPlatform();
   return impl;
 }
 export const platform = () => impl;

@@ -46,7 +46,7 @@ export function Onboarding() {
         <>
           <h2>Microphone access</h2>
           <p class="sub">Flowstay needs your microphone to hear you. Nothing is recorded unless you start a dictation.</p>
-          {mic === false && <div class="banner warn">Access was blocked. {({ windows: 'Open Windows Settings → Privacy & security → Microphone and allow desktop apps.', web: 'On iPhone: Settings → Safari → Microphone → Allow, then reload.', ios: 'Open iPhone Settings → Flowstay → Microphone.', android: 'Open Android Settings → Apps → Flowstay → Permissions → Microphone.' } as const)[p.kind]}</div>}
+          {mic === false && <div class="banner warn">Access was blocked. {win ? 'Open Windows Settings → Privacy & security → Microphone and allow desktop apps.' : 'On iPhone: Settings → Safari → Microphone → Allow, then reload.'}</div>}
           <div class="inline" style="justify-content:flex-end">
             {mic ? <span class="pill ok">✓ Allowed</span> : <button class="btn" onClick={async () => setMic(await Recorder.requestPermission())}>Allow microphone</button>}
             <button class="btn primary" disabled={!mic} onClick={next}>Continue</button>
@@ -85,17 +85,6 @@ export function Onboarding() {
               <div class="row"><div class="label">Hold to talk<small>Hold while speaking, release to finish.</small></div><ShortcutInput value={s.holdShortcut} onChange={(v) => { settings.set({ holdShortcut: v }); applyHotkeys(); }} /></div>
             </div>
             <p class="hint">The text is pasted where your cursor is. If a shortcut doesn't respond, another app is using it: pick a different one.</p>
-            <div class="inline" style="justify-content:flex-end"><button class="btn primary" onClick={next}>Continue</button></div>
-          </>
-        ) : p.kind !== 'web' ? (
-          <>
-            <h2>How it works</h2>
-            <ol class="stack" style="padding-left:18px">
-              <li>Open Flowstay, tap the mic, speak, tap again.</li>
-              <li>The text is <b>copied instantly</b>: switch to any app and paste.</li>
-              <li>Add names and jargon in <b>Vocabulary</b> so they're spelled right.</li>
-            </ol>
-            <p class="hint">Models are stored inside the app, so they only download once.</p>
             <div class="inline" style="justify-content:flex-end"><button class="btn primary" onClick={next}>Continue</button></div>
           </>
         ) : (

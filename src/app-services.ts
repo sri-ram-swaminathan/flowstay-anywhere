@@ -48,9 +48,6 @@ const newer = (a: string, b: string) => {
 export async function boot() {
   const s = settings.get();
   const p = platform();
-  // Apps keep model files in native storage; the browser asks not to evict its cache.
-  if (p.modelStore) c.engine.useModelStore(p.modelStore);
-  else (navigator as any).storage?.persist?.().then((ok: boolean) => log(`Persistent storage: ${ok}`)).catch(() => {});
   log(`Starting ${VERSION} on ${p.kind}`);
 
   // finish an OpenRouter redirect sign-in (web)

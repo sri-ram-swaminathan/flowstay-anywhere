@@ -7,14 +7,9 @@ use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-use std::path::PathBuf;
-#[cfg(desktop)]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-#[cfg(desktop)]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-#[cfg(desktop)]
-use tauri::PhysicalPosition;
-use tauri::{AppHandle, Emitter, Manager, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WindowEvent};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,7 +33,6 @@ struct OAuthCallback {
 
 // ---------------------------------------------------------------- clipboard / paste
 
-#[cfg(desktop)]
 #[tauri::command]
 fn set_clipboard(text: String) -> Result<(), String> {
     arboard::Clipboard::new()
@@ -48,19 +42,6 @@ fn set_clipboard(text: String) -> Result<(), String> {
 
 /// Puts `text` on the clipboard, sends Ctrl+V to the focused app, then (optionally) restores
 /// the previous clipboard text. Returns false if the paste keystroke couldn't be sent.
-#[cfg(mobile)]
-#[tauri::command]
-fn set_clipboard(_text: String) -> Result<(), String> {
-    Err("use the clipboard plugin on mobile".into())
-}
-
-#[cfg(mobile)]
-#[tauri::command]
-async fn paste_text(_text: String, _restore: bool) -> Result<bool, String> {
-    Ok(false)
-}
-
-#[cfg(desktop)]
 #[tauri::command]
 async fn paste_text(text: String, restore: bool) -> Result<bool, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -351,13 +332,6 @@ fn show_main(app: AppHandle) {
     show_main_window(&app);
 }
 
-#[cfg(mobile)]
-#[tauri::command]
-fn show_overlay(_app: AppHandle) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(desktop)]
 #[tauri::command]
 fn show_overlay(app: AppHandle) -> Result<(), String> {
     let w = app.get_webview_window("overlay").ok_or("no overlay window")?;
@@ -386,90 +360,19 @@ fn hide_overlay(app: AppHandle) {
     }
 }
 
-// ---------------------------------------------------------------- persistent model cache
-// Speech/LLM model files are stored as plain files in the app's data folder, so the OS never
-// evicts them (browser caches on iOS get wiped, which forced re-downloads).
-
-fn models_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let d = app.path().app_data_dir().map_err(|e| e.to_string())?.join("models");
-    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
-    Ok(d)
-}
-
-fn key_path(dir: &std::path::Path, key: &str) -> PathBuf {
-    let name: String = key
-        .trim_start_matches("https://")
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '_' })
-        .collect();
-    dir.join(name)
-}
-
-#[tauri::command]
-async fn model_cache_get(app: AppHandle, key: String) -> Result<tauri::ipc::Response, String> {
-    let path = key_path(&models_dir(&app)?, &key);
-    let bytes = tauri::async_runtime::spawn_blocking(move || std::fs::read(path))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|_| "miss".to_string())?;
-    Ok(tauri::ipc::Response::new(bytes))
-}
-
-#[tauri::command]
-async fn model_cache_put(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<(), String> {
-    let key = request
-        .headers()
-        .get("x-key")
-        .and_then(|v| v.to_str().ok())
-        .map(url_decode)
-        .ok_or("missing x-key header")?;
-    let tauri::ipc::InvokeBody::Raw(data) = request.body() else {
-        return Err("expected raw bytes".into());
-    };
-    let path = key_path(&models_dir(&app)?, &key);
-    let tmp = path.with_extension("part");
-    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn model_cache_clear(app: AppHandle) -> Result<(), String> {
-    let d = models_dir(&app)?;
-    std::fs::remove_dir_all(&d).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-fn platform_kind() -> &'static str {
-    if cfg!(target_os = "android") {
-        "android"
-    } else if cfg!(target_os = "ios") {
-        "ios"
-    } else {
-        "windows"
-    }
-}
-
 // ---------------------------------------------------------------- app
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut builder = tauri::Builder::default();
-
-    #[cfg(desktop)]
-    {
-        builder = builder
-            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
-            .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-            .plugin(tauri_plugin_autostart::init(
-                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-                Some(vec!["--minimized"]),
-            ));
-    }
-
-    builder
+    tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main_window(app)))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--minimized"]),
+        ))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             set_clipboard,
             paste_text,
@@ -479,40 +382,31 @@ pub fn run() {
             oauth_listen,
             show_main,
             show_overlay,
-            hide_overlay,
-            model_cache_get,
-            model_cache_put,
-            model_cache_clear,
-            platform_kind
+            hide_overlay
         ])
         .setup(|app| {
-            #[cfg(desktop)]
-            {
-                let toggle = MenuItem::with_id(app, "toggle", "Start / stop transcription", true, None::<&str>)?;
-                let open = MenuItem::with_id(app, "open", "Open Flowstay", true, None::<&str>)?;
-                let quit = MenuItem::with_id(app, "quit", "Quit Flowstay", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&toggle, &open, &PredefinedMenuItem::separator(app)?, &quit])?;
-                let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
-                TrayIconBuilder::with_id("tray")
-                    .icon(icon)
-                    .tooltip("Flowstay")
-                    .menu(&menu)
-                    .show_menu_on_left_click(false)
-                    .on_menu_event(|app, e| match e.id.as_ref() {
-                        "toggle" => {
-                            let _ = app.emit("tray-action", "toggle");
-                        }
-                        "open" => show_main_window(app),
-                        "quit" => app.exit(0),
-                        _ => {}
-                    })
-                    .on_tray_icon_event(|tray, e| {
-                        if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
-                            show_main_window(tray.app_handle());
-                        }
-                    })
-                    .build(app)?;
-            }
+            let toggle = MenuItem::with_id(app, "toggle", "Start / stop transcription", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open Flowstay", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Flowstay", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&toggle, &open, &PredefinedMenuItem::separator(app)?, &quit])?;
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?;
+            TrayIconBuilder::with_id("tray")
+                .icon(icon)
+                .tooltip("Flowstay")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, e| match e.id.as_ref() {
+                    "toggle" => { let _ = app.emit("tray-action", "toggle"); }
+                    "open" => show_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, e| {
+                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = e {
+                        show_main_window(tray.app_handle());
+                    }
+                })
+                .build(app)?;
 
             let minimized = std::env::args().any(|a| a == "--minimized");
             if !minimized {
@@ -521,13 +415,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // closing the main window keeps Flowstay running in the tray (desktop)
-            if cfg!(desktop) {
-                if let WindowEvent::CloseRequested { api, .. } = event {
-                    if window.label() == "main" {
-                        api.prevent_close();
-                        let _ = window.hide();
-                    }
+            // closing the main window keeps Flowstay running in the tray
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
                 }
             }
         })
