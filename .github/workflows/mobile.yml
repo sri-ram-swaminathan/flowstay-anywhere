@@ -11,16 +11,16 @@ permissions:
 jobs:
   android:
     runs-on: ubuntu-latest
-    env:
-      NDK_VERSION: 27.2.12479018
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
-      - uses: android-actions/setup-android@v3
-      - run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0"
+      - name: Use the runner's Android SDK/NDK
+        run: |
+          echo "NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+          echo "BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)" >> $GITHUB_ENV
       - uses: dtolnay/rust-toolchain@stable
         with: { targets: "aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android" }
       - uses: swatinem/rust-cache@v2
@@ -28,14 +28,12 @@ jobs:
       - run: npm ci
       - name: Generate Android project
         run: |
-          export NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION
           npx tauri android init --ci
           M=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           sed -i 's#<application#<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <application#' $M
           grep -n "permission" $M
       - name: Build APK
         run: |
-          export NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION
           npx tauri android build --apk --target aarch64
       - name: Sign APK
         env:
@@ -51,7 +49,7 @@ jobs:
             KS_PASS=throwaway
             keytool -genkeypair -keystore ks.jks -storepass "$KS_PASS" -keypass "$KS_PASS" -alias flowstay -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Flowstay"
           fi
-          BT=$ANDROID_HOME/build-tools/34.0.0
+          BT=$BUILD_TOOLS
           $BT/zipalign -f 4 "$APK" aligned.apk
           $BT/apksigner sign --ks ks.jks --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" --ks-key-alias flowstay --out "Flowstay_${VERSION}_android.apk" aligned.apk
           rm ks.jks
@@ -83,13 +81,16 @@ jobs:
           npx tauri ios init --ci
           PLIST=$(find src-tauri/gen/apple -name Info.plist -path "*_iOS*" | head -1)
           /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Flowstay listens only while you dictate and transcribes on your device.'" "$PLIST" || true
-          /usr/libexec/PlistBuddy -c "Print" "$PLIST" | head -40
+          # Build without code signing (Sideloadly/AltStore re-sign with your Apple ID)
+          PBX=$(find src-tauri/gen/apple -name project.pbxproj | head -1)
+          perl -i -ne 'print unless /^\s*(CODE_SIGN_IDENTITY|"CODE_SIGN_IDENTITY\[sdk=iphoneos\*\]"|DEVELOPMENT_TEAM|CODE_SIGN_STYLE|PROVISIONING_PROFILE_SPECIFIER)\s*=/' "$PBX"
+          perl -i -pe 's/buildSettings = \{/buildSettings = {\n\t\t\t\tCODE_SIGNING_ALLOWED = NO;\n\t\t\t\tCODE_SIGNING_REQUIRED = NO;\n\t\t\t\tCODE_SIGN_IDENTITY = "";\n\t\t\t\tCODE_SIGN_STYLE = Manual;/g' "$PBX"
+          grep -c "CODE_SIGNING_ALLOWED = NO" "$PBX"
       - name: Build unsigned app
         run: |
           # Archive without code signing; Sideloadly/AltStore re-sign it with your Apple ID.
-          npx tauri ios build --ci -- CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" || echo "tauri ios build exited non-zero (expected at the signed export step)"
-          APP=$(find src-tauri/gen/apple/build -path "*.xcarchive/Products/Applications/*.app" -maxdepth 6 | head -1)
-          if [ -z "$APP" ]; then APP=$(find src-tauri/gen/apple -name "*.app" -path "*iphoneos*" | head -1); fi
+          npx tauri ios build --ci || echo "tauri ios build exited non-zero (expected at the signed export step)"
+          APP=$(find src-tauri/gen/apple ~/Library/Developer/Xcode/DerivedData -type d -name "*.app" \( -path "*.xcarchive/Products/Applications/*" -o -path "*iphoneos*" \) 2>/dev/null | grep -v "\.app/" | head -1)
           echo "app: $APP"
           test -n "$APP"
           VERSION=$(node -p "require('./package.json').version")
