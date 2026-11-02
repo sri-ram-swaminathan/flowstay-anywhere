@@ -83,8 +83,14 @@ for (const [llm, dev] of llmRuns) {
   if (dev === 'gpu' && !hasGpu) { results.push({ llm: `${llm} (gpu)`, ok: true, text: 'skipped: no WebGPU adapter on runner' }); await p.context().close(); continue; }
   try {
     await p.click('nav >> text=Personas');
+    const t0 = Date.now();
+    const tick = setInterval(async () => {
+      const pill = await p.locator('.pill').filter({ hasText: /Downloading|ready|Failed/ }).first().innerText().catch(() => '');
+      console.log(`  [llm ${Math.round((Date.now() - t0) / 1000)}s] ${pill}`);
+    }, 60_000);
     await p.click('text=Rewrite with');
-    await p.waitForSelector('.original', { timeout: 600_000 });
+    await p.waitForSelector('.original', { timeout: 1_500_000 }).finally(() => clearInterval(tick));
+    console.log(`  [llm] done in ${Math.round((Date.now() - t0) / 1000)}s`);
     const out = await p.locator('.original').last().innerText();
     const ok = !out.startsWith('⚠️') && /thursday/i.test(out);
     results.push({ llm: `${llm} (${dev})`, ok, text: out });
