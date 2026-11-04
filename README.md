@@ -41,10 +41,11 @@ Needs a CPU with AVX2 (virtually every laptop since ~2015).
 ## Vocabulary
 
 Add names, jargon and tools you use. They're applied three ways:
-1. The speech model is **biased toward your terms** while decoding (first 40 terms).
-2. Every transcript is **corrected**: casing (`github` → `GitHub`), sound-alikes (`pie torch` → `PyTorch`), and exact
+1. Every transcript is **corrected**: casing (`github` → `GitHub`), sound-alikes (`pie torch` → `PyTorch`), and exact
    *heard as* rules (`cloud code` → `Claude Code`, also catching `CloudCode` / `cloud-code`). Whole words only.
-3. Persona rewrites keep your spellings.
+2. Persona rewrites keep your spellings.
+3. Models that support in-decoder biasing get your first 40 terms too (the current Parakeet models don't, so step 1
+   does the work).
 
 ## Cleanup and personas
 
