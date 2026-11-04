@@ -7,7 +7,7 @@ import { Icon } from './icons';
 import { toast } from './toast';
 import { fmtDur, timeAgo } from './widgets';
 
-export const KEY_LABEL: Record<PttKey, string> = { RightControl: 'Right Ctrl', RightAlt: 'Right Alt', RightShift: 'Right Shift', CapsLock: 'Caps Lock', F13: 'F13', off: '' };
+export const KEY_LABEL: Record<PttKey, string> = { Space: 'Space', RightControl: 'Right Ctrl', RightAlt: 'Right Alt', RightShift: 'Right Shift', CapsLock: 'Caps Lock', F13: 'F13', off: '' };
 export const pretty = (sc: string) => sc.replace('Control', 'Ctrl').replace('Super', 'Win').split('+');
 
 export function Home({ go }: { go: (tab: string) => void }) {
@@ -18,6 +18,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const err = c.lastError.use();
   const ms = c.modelState.use();
   const latency = c.lastLatency.use();
+  const live = c.liveText.use();
   const [recent, setRecent] = useState<TranscriptionRecord[]>([]);
   const [open, setOpen] = useState<string | null>(null);
   const bars = useRef<number[]>(Array(18).fill(0));
@@ -54,9 +55,13 @@ export function Home({ go }: { go: (tab: string) => void }) {
               <div class="meter">{bars.current.map((l, i) => <i key={i} style={{ height: `${4 + Math.min(22, l * 300)}px` }} />)}</div>
               <span><span class="kbd">Esc</span> cancel</span>
             </div>
+          ) : null}
+          {status === 'recording' || (status === 'transcribing' && live) ? (
+            <div class="live-text">{live || <span style="color:var(--faint)">{s.livePreview ? 'Start talking…' : 'Live preview is off'}</span>}{status === 'recording' && <span class="caret" />}</div>
           ) : (
             <div class="hero-help">
-              {s.pttKey !== 'off' && <span><span class="kbd">{KEY_LABEL[s.pttKey]}</span> hold to talk, or tap to start / stop</span>}
+              {s.pttKey === 'Space' && <span><span class="kbd">Space</span> hold to talk (a tap still types a space)</span>}
+              {s.pttKey !== 'off' && s.pttKey !== 'Space' && <span><span class="kbd">{KEY_LABEL[s.pttKey]}</span> hold to talk, or tap to start / stop</span>}
               {s.toggleShortcut && <span>{pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} toggle</span>}
             </div>
           )}

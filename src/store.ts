@@ -17,8 +17,8 @@ export interface AppRule {
 }
 
 export type ProviderId = 'local' | 'openrouter' | 'claude-code';
-export type PttKey = 'RightControl' | 'RightAlt' | 'RightShift' | 'CapsLock' | 'F13' | 'off';
-export const PTT_VK: Record<PttKey, number> = { RightControl: 0xa3, RightAlt: 0xa5, RightShift: 0xa1, CapsLock: 0x14, F13: 0x7c, off: 0 };
+export type PttKey = 'Space' | 'RightControl' | 'RightAlt' | 'RightShift' | 'CapsLock' | 'F13' | 'off';
+export const PTT_VK: Record<PttKey, number> = { Space: 0x20, RightControl: 0xa3, RightAlt: 0xa5, RightShift: 0xa1, CapsLock: 0x14, F13: 0x7c, off: 0 };
 
 export interface Settings {
   hasCompletedOnboarding: boolean;
@@ -28,6 +28,7 @@ export interface Settings {
   micDeviceId: string;
   instantStart: boolean; // keep the mic open between dictations
   silenceTimeoutSeconds: number;
+  livePreview: boolean; // show words while speaking
   // shortcuts
   pttKey: PttKey; // hold to talk, tap to toggle
   toggleShortcut: string; // optional combo, '' = none
@@ -71,6 +72,7 @@ export const DEFAULTS: Settings = {
   micDeviceId: '',
   instantStart: false,
   silenceTimeoutSeconds: 60,
+  livePreview: true,
   pttKey: 'RightControl',
   toggleShortcut: 'Alt+Space',
   autoPasteEnabled: true,

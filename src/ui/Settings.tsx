@@ -44,8 +44,14 @@ export function Settings() {
 
       <h3>Shortcuts</h3>
       <div class="card">
-        <Row label="Push-to-talk key" hint="Hold to talk and release to finish, or tap once to start and again to stop. Right Ctrl doesn't type anything, so it's safe on every keyboard layout.">
-          <select value={s.pttKey} onChange={(e) => setShortcuts({ pttKey: (e.target as HTMLSelectElement).value as PttKey })}>
+        <Row label="Push-to-talk key" hint={s.pttKey === 'Space'
+          ? 'Hold Space to talk, like Claude Code: a quick tap still types a space, and Space works normally with Ctrl/Alt/Win held or in admin windows. Instant start is turned on so your first word isn\'t clipped.'
+          : 'Hold to talk and release to finish, or tap once to start and again to stop. Right Ctrl doesn\'t type anything, so it\'s safe on every keyboard layout.'}>
+          <select value={s.pttKey} onChange={(e) => {
+            const k = (e.target as HTMLSelectElement).value as PttKey;
+            if (k === 'Space' && !s.instantStart) setMic({ instantStart: true });
+            setShortcuts({ pttKey: k });
+          }}>
             {(Object.keys(KEY_LABEL) as PttKey[]).map((k) => <option key={k} value={k}>{k === 'off' ? 'Off' : KEY_LABEL[k]}</option>)}
           </select>
         </Row>
@@ -64,6 +70,9 @@ export function Settings() {
         <Row label="Copy to clipboard" hint="Always on: your words are on the clipboard the moment you stop."><span class="pill ok"><Icon name="check" size="sm" />Always</span></Row>
         <Row label="Also paste into the app you're typing in" hint="Sends Ctrl+V to the window that was active when you started. The text stays on the clipboard either way.">
           <Toggle checked={s.autoPasteEnabled} onChange={(v) => settings.set({ autoPasteEnabled: v })} />
+        </Row>
+        <Row label="Live preview" hint="See your words appear as you speak, in the recording bubble and here.">
+          <Toggle checked={s.livePreview} onChange={(v) => settings.set({ livePreview: v })} />
         </Row>
         <Row label="Remove filler words" hint="Drops um / uh / er and stutters like “I I think”. Instant, no AI.">
           <Toggle checked={s.cleanupEnabled} onChange={(v) => settings.set({ cleanupEnabled: v })} />

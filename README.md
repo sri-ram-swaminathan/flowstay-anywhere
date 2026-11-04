@@ -12,7 +12,8 @@ It isn't code-signed yet, so SmartScreen warns on first run: *More info → Run 
 
 | | |
 |---|---|
-| **Right Ctrl** (configurable) | Hold to talk, release to finish, or tap to start and tap again to stop |
+| **Right Ctrl** (default) | Hold to talk, release to finish, or tap to start and tap again to stop |
+| **Space** (option) | Hold to talk, like Claude Code's voice mode. A quick tap still types a space; fast typing, shortcuts with Ctrl/Alt/Win, and admin windows are left alone |
 | **Alt+Space** (configurable, optional) | Toggle recording |
 | **Esc** | Cancel the current recording |
 
@@ -30,10 +31,16 @@ Parakeet models on the CPU. The model stays loaded, so a dictation only pays for
 | Parakeet Fast 110M | 135 MB | 6.1 % | ~50× real time |
 | Parakeet v3, 25 languages | 740 MB | 4.8 % | ~14× real time |
 
-Figures from Handy's benchmarks. Latency tricks:
+Figures from Handy's benchmarks.
+
+**Live preview:** your words appear as you speak, in the recording bubble and on the Dictate screen. The sentence in
+progress is re-transcribed every ~0.6 s with full context, so the preview is as accurate as the final text.
+
+Latency tricks:
 - Audio is cut at natural pauses and transcribed **while you keep talking**, so stopping only waits for the last few seconds.
+- If the live preview already covers what you said, stopping reuses it: the text is on the clipboard almost instantly.
 - Leading/trailing silence is trimmed before inference.
-- **Instant start** (Settings → Microphone) keeps the mic open and keeps 300 ms of pre-roll, so your first word is never clipped.
+- **Instant start** (Settings → Microphone) keeps the mic open and keeps 500 ms of pre-roll, so your first word is never clipped.
 - The Dictate screen shows the stop-to-clipboard time of your last dictation.
 
 Needs a CPU with AVX2 (virtually every laptop since ~2015).

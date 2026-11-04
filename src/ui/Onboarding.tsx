@@ -14,6 +14,7 @@ export function Onboarding() {
   const ms = c.modelState.use();
   const status = c.status.use();
   const result = c.lastResult.use();
+  const live = c.liveText.use();
   const [startResult] = useState(() => c.lastResult.get());
   const [dlErr, setDlErr] = useState<string | null>(null);
   const finish = () => settings.set({ hasCompletedOnboarding: true });
@@ -92,7 +93,12 @@ export function Onboarding() {
           <p class="sub">Click into any text box, then hold your key and speak. Release to finish.</p>
           <div class="row" style="padding-top:0">
             <span class="label">Push-to-talk key</span>
-            <select value={s.pttKey} onChange={(e) => { settings.set({ pttKey: (e.target as HTMLSelectElement).value as PttKey }); c.applyShortcuts(); }}>
+            <select value={s.pttKey} onChange={(e) => {
+              const k = (e.target as HTMLSelectElement).value as PttKey;
+              settings.set(k === 'Space' ? { pttKey: k, instantStart: true } : { pttKey: k });
+              c.configureRecorder();
+              c.applyShortcuts();
+            }}>
               {(Object.keys(KEY_LABEL) as PttKey[]).filter((k) => k !== 'off').map((k) => <option key={k} value={k}>{KEY_LABEL[k]}</option>)}
             </select>
           </div>
@@ -100,6 +106,7 @@ export function Onboarding() {
             <span class={`kbd big-key ${status === 'recording' ? 'pressed' : ''}`}>{KEY_LABEL[s.pttKey]}</span>
             <div class="hint" style="margin-top:12px">{status === 'recording' ? 'Listening… release to finish' : status === 'transcribing' ? 'Transcribing…' : 'Hold it now and say a sentence'}</div>
           </div>
+          {status === 'recording' && <div class="card pad live-text" style="margin-top:0">{live || 'Start talking…'}<span class="caret" /></div>}
           {result && result !== startResult && <div class="card pad"><div class="selectable">{result.processedText}</div><div class="hint" style="margin-top:6px">That's on your clipboard now. Press Ctrl+V anywhere.</div></div>}
           <div class="spread"><button class="btn ghost" onClick={finish}>Skip</button><button class="btn primary" onClick={finish}>Done</button></div>
         </>

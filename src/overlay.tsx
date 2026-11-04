@@ -20,8 +20,11 @@ function Bubble() {
     return () => { un.then((f) => f()); };
   }, []);
   if (st.status === 'hidden') return null;
+  const live = (st.status === 'recording' || st.status === 'transcribing') && st.text ? tail(st.text, 150) : '';
   return (
-    <div class="bubble">
+    <div class={`bubble ${live ? 'with-text' : ''}`}>
+      {live && <div class="live">{live}</div>}
+      <div class="bubble-row">
       {st.status === 'recording' && (
         <>
           <span class="rec-dot" />
@@ -33,8 +36,11 @@ function Bubble() {
       {st.status === 'rewriting' && <><span class="spin" />{st.persona ?? 'Persona'}</>}
       {st.status === 'done' && <><Icon name="check" size="sm" />{st.text}</>}
       {st.status === 'error' && <>{st.text}</>}
+      </div>
     </div>
   );
 }
+
+const tail = (t: string, n: number) => (t.length > n ? '…' + t.slice(t.length - n).replace(/^\S*\s/, '') : t);
 
 render(<Bubble />, document.getElementById('app')!);
