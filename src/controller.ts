@@ -179,7 +179,7 @@ export async function start(): Promise<void> {
     elapsed.set(0);
     tick = window.setInterval(() => elapsed.set(recorder.elapsed), 200);
     startLive();
-    platform().registerShortcut('Escape', cancel);
+    platform().registerShortcut('Escape', (down) => down && cancel());
   } catch (e: any) {
     fail(e?.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in Windows Settings → Privacy & security → Microphone.' : `Couldn't start recording: ${e?.message ?? e}`);
   } finally {
@@ -297,6 +297,21 @@ export function onPtt(e: 'down' | 'up' | 'combo') {
   }
 }
 
+/** The key combination (Ctrl+Space): hold to talk, or tap to start and tap again to stop. */
+let registered = '';
+let comboDownAt = 0;
+let comboStarted = false;
+function onShortcut(pressed: boolean) {
+  const st = status.get();
+  if (pressed) {
+    if (st === 'idle') { comboDownAt = performance.now(); comboStarted = true; start(); }
+    else if (st === 'recording') { comboStarted = false; stop(); }
+  } else if (st === 'recording' && comboStarted && performance.now() - comboDownAt > 350) {
+    comboStarted = false;
+    stop();
+  }
+}
+
 function cancelQuietly() {
   clearInterval(tick);
   stopLive();
@@ -313,7 +328,9 @@ export async function applyShortcuts(): Promise<string | null> {
   const s = settings.get();
   const p = platform();
   await p.setPttKey(PTT_VK[s.pttKey]);
-  return s.toggleShortcut ? p.registerShortcut(s.toggleShortcut, () => toggle()) : null;
+  if (registered && registered !== s.toggleShortcut) await p.unregisterShortcut(registered);
+  registered = s.toggleShortcut;
+  return s.toggleShortcut ? p.registerShortcut(s.toggleShortcut, onShortcut) : null;
 }
 
 function resolvePersona(app: FrontApp | null) {

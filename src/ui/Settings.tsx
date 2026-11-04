@@ -55,7 +55,7 @@ export function Settings() {
             {(Object.keys(KEY_LABEL) as PttKey[]).map((k) => <option key={k} value={k}>{k === 'off' ? 'Off' : KEY_LABEL[k]}</option>)}
           </select>
         </Row>
-        <Row label="Toggle shortcut" hint="Optional key combination: press to start, press again to stop.">
+        <Row label="Shortcut" hint="Hold to talk, or tap to start and tap again to stop. Note: while Flowstay runs it takes this combination from other apps (Ctrl+Space is also autocomplete in VS Code and an input-method switch for some languages).">
           <span class="inline">
             <ShortcutInput value={s.toggleShortcut} onChange={(v) => setShortcuts({ toggleShortcut: v })} />
             {s.toggleShortcut && <button class="icon-btn" title="Remove" onClick={() => setShortcuts({ toggleShortcut: '' })}><Icon name="x" size="sm" /></button>}

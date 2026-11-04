@@ -32,7 +32,7 @@ export function tauriPlatform(): Platform {
     async registerShortcut(sc, cb) {
       try {
         await unregister(sc).catch(() => {});
-        await register(sc, (e) => { if (e.state === 'Pressed') cb(); });
+        await register(sc, (e) => cb(e.state === 'Pressed'));
         return null;
       } catch (err) {
         return `Couldn't use ${sc}: another app may own it (${err}).`;

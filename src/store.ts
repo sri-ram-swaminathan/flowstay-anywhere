@@ -74,7 +74,7 @@ export const DEFAULTS: Settings = {
   silenceTimeoutSeconds: 60,
   livePreview: true,
   pttKey: 'RightControl',
-  toggleShortcut: 'Alt+Space',
+  toggleShortcut: 'Control+Space',
   autoPasteEnabled: true,
   cleanupEnabled: true,
   soundFeedbackEnabled: true,
@@ -106,6 +106,7 @@ function load(): Settings {
       const saved = JSON.parse(raw);
       const out: any = { ...DEFAULTS };
       for (const k of Object.keys(DEFAULTS)) if (k in saved) out[k] = saved[k];
+      if (out.toggleShortcut === 'Alt+Space') out.toggleShortcut = 'Control+Space'; // old default
       return out;
     }
   } catch (e) {

@@ -29,7 +29,7 @@ export interface Platform {
   // ---- input / output
   setPttKey(vk: number): Promise<void>;
   onPtt(cb: (e: 'down' | 'up' | 'combo') => void): void;
-  registerShortcut(shortcut: string, cb: () => void): Promise<string | null>;
+  registerShortcut(shortcut: string, cb: (pressed: boolean) => void): Promise<string | null>;
   unregisterShortcut(shortcut: string): Promise<void>;
   copy(text: string): Promise<boolean>;
   paste(text: string): Promise<boolean>;

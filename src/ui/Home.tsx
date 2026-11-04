@@ -62,7 +62,7 @@ export function Home({ go }: { go: (tab: string) => void }) {
             <div class="hero-help">
               {s.pttKey === 'Space' && <span><span class="kbd">Space</span> hold to talk (a tap still types a space)</span>}
               {s.pttKey !== 'off' && s.pttKey !== 'Space' && <span><span class="kbd">{KEY_LABEL[s.pttKey]}</span> hold to talk, or tap to start / stop</span>}
-              {s.toggleShortcut && <span>{pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} toggle</span>}
+              {s.toggleShortcut && <span>{pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} hold or tap</span>}
             </div>
           )}
           <div class="stats">

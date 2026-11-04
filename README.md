@@ -14,7 +14,7 @@ It isn't code-signed yet, so SmartScreen warns on first run: *More info → Run 
 |---|---|
 | **Right Ctrl** (default) | Hold to talk, release to finish, or tap to start and tap again to stop |
 | **Space** (option) | Hold to talk, like Claude Code's voice mode. A quick tap still types a space; fast typing, shortcuts with Ctrl/Alt/Win, and admin windows are left alone |
-| **Alt+Space** (configurable, optional) | Toggle recording |
+| **Ctrl+Space** (configurable) | Hold to talk, or tap to start and tap again to stop |
 | **Esc** | Cancel the current recording |
 
 The text is copied to the clipboard the moment you stop, and also pasted into the window you were typing in
