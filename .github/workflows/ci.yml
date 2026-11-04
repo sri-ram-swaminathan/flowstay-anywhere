@@ -37,7 +37,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
-        with: { workspaces: src-tauri, key: ${{ matrix.os }} }
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.os }}
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/flowstay-models
