@@ -1,16 +1,17 @@
-// The floating "bubble" window shown at the bottom of the screen on Windows while dictating.
+// The floating pill shown at the bottom of the screen while dictating.
 import { listen } from '@tauri-apps/api/event';
 import { render } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { OverlayState } from './platform';
 import './styles.css';
+import { Icon } from './ui/icons';
 import { fmtDur } from './ui/widgets';
 
 document.documentElement.classList.add('overlay-root');
 
 function Bubble() {
   const [st, setSt] = useState<OverlayState>({ status: 'hidden' });
-  const hist = useRef<number[]>(Array(14).fill(0));
+  const hist = useRef<number[]>(Array(16).fill(0));
   useEffect(() => {
     const un = listen<OverlayState>('overlay-state', (e) => {
       if (e.payload.status === 'recording') hist.current = [...hist.current.slice(1), e.payload.level ?? 0];
@@ -23,15 +24,15 @@ function Bubble() {
     <div class="bubble">
       {st.status === 'recording' && (
         <>
-          <div class="bars">{hist.current.map((l, i) => <i key={i} style={{ height: `${4 + Math.min(18, l * 260)}px` }} />)}</div>
-          <span>Listening</span>
+          <span class="rec-dot" />
+          <div class="bars-live">{hist.current.map((l, i) => <i key={i} style={{ height: `${3 + Math.min(17, l * 240)}px` }} />)}</div>
           <span style="opacity:.6;font-variant-numeric:tabular-nums">{fmtDur(st.elapsed ?? 0)}</span>
         </>
       )}
-      {st.status === 'transcribing' && <><span class="dot-spin" />Transcribing…</>}
-      {st.status === 'rewriting' && <><span class="dot-spin" />✨ {st.persona ?? 'Persona'}…</>}
-      {st.status === 'done' && <>✓ {st.text}</>}
-      {st.status === 'error' && <>⚠️ {st.text}</>}
+      {st.status === 'transcribing' && <><span class="spin" />Transcribing</>}
+      {st.status === 'rewriting' && <><span class="spin" />{st.persona ?? 'Persona'}</>}
+      {st.status === 'done' && <><Icon name="check" size="sm" />{st.text}</>}
+      {st.status === 'error' && <>{st.text}</>}
     </div>
   );
 }

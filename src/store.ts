@@ -16,32 +16,27 @@ export interface AppRule {
   personaId: string;
 }
 
-export type HotkeyMode = 'toggle' | 'hold' | 'both';
 export type ProviderId = 'local' | 'openrouter' | 'claude-code';
+export type PttKey = 'RightControl' | 'RightAlt' | 'RightShift' | 'CapsLock' | 'F13' | 'off';
+export const PTT_VK: Record<PttKey, number> = { RightControl: 0xa3, RightAlt: 0xa5, RightShift: 0xa1, CapsLock: 0x14, F13: 0x7c, off: 0 };
 
 export interface Settings {
   hasCompletedOnboarding: boolean;
   // speech
-  asrModel: string;
-  asrDevice: 'auto' | 'gpu' | 'cpu';
-  language: string;
+  model: string;
+  language: string; // 'auto' or ISO code (multilingual model only)
   micDeviceId: string;
+  instantStart: boolean; // keep the mic open between dictations
   silenceTimeoutSeconds: number;
+  // shortcuts
+  pttKey: PttKey; // hold to talk, tap to toggle
+  toggleShortcut: string; // optional combo, '' = none
   // output
-  autoPasteEnabled: boolean;
-  autoCopyEnabled: boolean;
-  /** After auto-pasting, leave the transcript on the clipboard (instead of restoring what was there). */
-  keepOnClipboard: boolean;
-  // feedback
+  autoPasteEnabled: boolean; // text is always copied; this also pastes it
+  cleanupEnabled: boolean; // remove filler words / stutters
   soundFeedbackEnabled: boolean;
   showOverlay: boolean;
-  // hotkeys (Windows)
-  hotkeyPressMode: HotkeyMode;
-  toggleShortcut: string;
-  holdShortcut: string;
   launchAtLogin: boolean;
-  // history
-  historyRetentionDays: number; // 0 = forever
   // personas
   personasEnabled: boolean;
   selectedPersonaId: string | null;
@@ -55,9 +50,6 @@ export interface Settings {
   openRouterModel: string;
   claudeCodeModel: 'haiku' | 'sonnet' | 'opus';
   claudeCodeMode: 'rewrite' | 'assistant';
-  // confirmations
-  confirmPersonaDelete: boolean;
-  confirmAppRuleDelete: boolean;
   // vocabulary
   vocabulary: VocabEntry[];
   vocabEnabled: boolean;
@@ -72,38 +64,31 @@ export const BUILT_IN_PERSONAS: Persona[] = [
   { id: 'concise', name: 'Concise', instruction: 'Make this text concise while preserving the core message', emoji: '✂️', isBuiltIn: true },
 ];
 
-const isPhone = typeof navigator !== 'undefined' && /iPhone|iPad|Android/i.test(navigator.userAgent);
-
 export const DEFAULTS: Settings = {
   hasCompletedOnboarding: false,
-  asrModel: isPhone ? 'moonshine-base' : 'moonshine-v2-small',
-  asrDevice: 'auto',
-  language: 'en',
+  model: 'parakeet-unified-en',
+  language: 'auto',
   micDeviceId: '',
-  silenceTimeoutSeconds: 30,
+  instantStart: false,
+  silenceTimeoutSeconds: 60,
+  pttKey: 'RightControl',
+  toggleShortcut: 'Alt+Space',
   autoPasteEnabled: true,
-  autoCopyEnabled: true,
-  keepOnClipboard: true,
+  cleanupEnabled: true,
   soundFeedbackEnabled: true,
   showOverlay: true,
-  hotkeyPressMode: 'both',
-  toggleShortcut: 'Alt+Space',
-  holdShortcut: 'Control+Shift+Space',
   launchAtLogin: false,
-  historyRetentionDays: 30,
   personasEnabled: false,
   selectedPersonaId: 'cleanup',
   userPersonas: [],
   useSmartAppDetection: false,
   appRules: [],
   knownApps: [],
-  provider: isPhone ? 'openrouter' : 'local',
+  provider: 'local',
   localLlmModel: 'qwen3.5-0.8b',
   openRouterModel: 'meta-llama/llama-3.3-8b-instruct:free',
   claudeCodeModel: 'haiku',
   claudeCodeMode: 'rewrite',
-  confirmPersonaDelete: true,
-  confirmAppRuleDelete: true,
   vocabulary: [],
   vocabEnabled: true,
   vocabStrictness: 0.5,
@@ -115,7 +100,12 @@ const KEY = 'flowstay.settings.v1';
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      const out: any = { ...DEFAULTS };
+      for (const k of Object.keys(DEFAULTS)) if (k in saved) out[k] = saved[k];
+      return out;
+    }
   } catch (e) {
     console.warn('settings reset (corrupt)', e);
     log('Settings were unreadable and have been reset to defaults.');

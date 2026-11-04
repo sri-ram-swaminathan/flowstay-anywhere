@@ -81,10 +81,18 @@ fn send_ctrl_v() -> bool {
         }
     }
     unsafe {
-        // release modifiers the user may still be holding from the hotkey (Alt would turn Ctrl+V into a menu action)
+        // Wait (up to 600 ms) for the user to let go of hotkey modifiers: a held Alt/Shift/Win
+        // would turn Ctrl+V into a different shortcut. Faking key-ups instead can leave apps
+        // thinking a modifier is stuck.
+        let held = |vk: VIRTUAL_KEY| (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0;
+        let mods = [VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN, VK_CONTROL];
+        let t = std::time::Instant::now();
+        while mods.iter().any(|&m| held(m)) && t.elapsed().as_millis() < 600 {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         let mut inputs = vec![];
         for vk in [VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN] {
-            if (GetAsyncKeyState(vk.0 as i32) as u16 & 0x8000) != 0 {
+            if held(vk) {
                 inputs.push(key(vk, true));
             }
         }
@@ -360,6 +368,196 @@ fn hide_overlay(app: AppHandle) {
     }
 }
 
+// ---------------------------------------------------------------- speech engine (native)
+
+struct EngineState {
+    engine: flowstay_engine::Engine,
+    dir: std::path::PathBuf,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelEntry {
+    id: &'static str,
+    name: &'static str,
+    blurb: &'static str,
+    size: u64,
+    english_wer: f32,
+    cpu_speed: f32,
+    multilingual: bool,
+    downloaded: bool,
+}
+
+#[derive(Serialize, Clone)]
+struct DownloadProgress {
+    id: String,
+    loaded: u64,
+    total: u64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LoadedModel {
+    id: String,
+    vocabulary: bool,
+    load_ms: u64,
+}
+
+#[derive(Serialize)]
+struct TranscribeOutput {
+    text: String,
+    ms: u64,
+}
+
+#[tauri::command]
+fn engine_models(state: tauri::State<'_, EngineState>) -> Vec<ModelEntry> {
+    flowstay_engine::MODELS
+        .iter()
+        .map(|m| ModelEntry {
+            id: m.id,
+            name: m.name,
+            blurb: m.blurb,
+            size: m.size,
+            english_wer: m.english_wer,
+            cpu_speed: m.cpu_speed,
+            multilingual: m.multilingual,
+            downloaded: flowstay_engine::is_downloaded(&state.dir, m),
+        })
+        .collect()
+}
+
+#[tauri::command]
+async fn engine_download(app: AppHandle, state: tauri::State<'_, EngineState>, id: String) -> Result<(), String> {
+    let m = flowstay_engine::find(&id).ok_or("unknown model")?;
+    let dir = state.dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        flowstay_engine::download(&dir, m, |loaded, total| {
+            let _ = app.emit("model-progress", DownloadProgress { id: id.clone(), loaded, total });
+        })
+        .map(|_| ())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn engine_delete(state: tauri::State<'_, EngineState>, id: String) -> Result<(), String> {
+    let m = flowstay_engine::find(&id).ok_or("unknown model")?;
+    state.engine.unload();
+    std::fs::remove_file(flowstay_engine::model_path(&state.dir, m)).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn engine_load(state: tauri::State<'_, EngineState>, id: String) -> Result<LoadedModel, String> {
+    let m = flowstay_engine::find(&id).ok_or("unknown model")?;
+    if !flowstay_engine::is_downloaded(&state.dir, m) {
+        return Err("not-downloaded".into());
+    }
+    let engine = state.engine.clone();
+    let path = flowstay_engine::model_path(&state.dir, m);
+    tauri::async_runtime::spawn_blocking(move || engine.load(path, &id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|l| LoadedModel { id: l.id, vocabulary: l.vocabulary, load_ms: l.load_ms as u64 })
+}
+
+/// Body: raw little-endian f32 PCM, 16 kHz mono. Options travel in headers.
+#[tauri::command]
+async fn engine_transcribe(state: tauri::State<'_, EngineState>, request: tauri::ipc::Request<'_>) -> Result<TranscribeOutput, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err("expected raw PCM".into());
+    };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(url_decode);
+    let vocabulary: Vec<String> = header("x-vocabulary").and_then(|v| serde_json::from_str(&v).ok()).unwrap_or_default();
+    let language = header("x-language").filter(|l| !l.is_empty() && l != "auto");
+    let pcm: Vec<f32> = bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect();
+    let engine = state.engine.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let trimmed = flowstay_engine::trim_silence(&pcm);
+        if trimmed.len() < 4000 {
+            return Ok(flowstay_engine::Output { text: String::new(), ms: 0 });
+        }
+        engine.transcribe(trimmed.to_vec(), vocabulary, language)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map(|o| TranscribeOutput { text: o.text, ms: o.ms as u64 })
+}
+
+// ---------------------------------------------------------------- push-to-talk key
+// A low-level keyboard hook sees single keys like Right Ctrl, which normal global shortcuts
+// can't. The key is observed, never swallowed (so it can't get "stuck" in other apps).
+
+#[cfg(windows)]
+mod ptt {
+    use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+    use std::sync::{mpsc, Mutex, OnceLock};
+    use tauri::{AppHandle, Emitter};
+    use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    static KEY: AtomicU32 = AtomicU32::new(0);
+    static DOWN: AtomicBool = AtomicBool::new(false);
+    static TX: OnceLock<Mutex<mpsc::Sender<&'static str>>> = OnceLock::new();
+
+    pub fn set_key(vk: u32) {
+        KEY.store(vk, Ordering::SeqCst);
+        DOWN.store(false, Ordering::SeqCst);
+    }
+
+    unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if code == HC_ACTION as i32 {
+            let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+            let key = KEY.load(Ordering::Relaxed);
+            let msg = wparam.0 as u32;
+            let is_down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+            let event = if key != 0 && kb.vkCode == key {
+                if is_down != DOWN.swap(is_down, Ordering::SeqCst) {
+                    Some(if is_down { "down" } else { "up" })
+                } else {
+                    None
+                }
+            } else if is_down && DOWN.load(Ordering::Relaxed) {
+                // another key while holding: the user is typing a shortcut (e.g. Ctrl+C)
+                Some("combo")
+            } else {
+                None
+            };
+            if let (Some(e), Some(tx)) = (event, TX.get()) {
+                if let Ok(tx) = tx.lock() {
+                    let _ = tx.send(e);
+                }
+            }
+        }
+        CallNextHookEx(None, code, wparam, lparam)
+    }
+
+    pub fn start(app: AppHandle) {
+        let (tx, rx) = mpsc::channel::<&'static str>();
+        let _ = TX.set(Mutex::new(tx));
+        std::thread::spawn(move || {
+            while let Ok(e) = rx.recv() {
+                let _ = app.emit("ptt", e);
+            }
+        });
+        std::thread::spawn(|| unsafe {
+            let module = GetModuleHandleW(None).ok();
+            let _hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), module.map(|m| m.into()), 0);
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+        });
+    }
+}
+
+#[tauri::command]
+fn ptt_set_key(vk: u32) {
+    #[cfg(windows)]
+    ptt::set_key(vk);
+    #[cfg(not(windows))]
+    let _ = vk;
+}
+
 // ---------------------------------------------------------------- app
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -382,9 +580,22 @@ pub fn run() {
             oauth_listen,
             show_main,
             show_overlay,
-            hide_overlay
+            hide_overlay,
+            engine_models,
+            engine_download,
+            engine_delete,
+            engine_load,
+            engine_transcribe,
+            ptt_set_key
         ])
         .setup(|app| {
+            if let Err(e) = flowstay_engine::init() {
+                eprintln!("speech engine init failed: {e}");
+            }
+            let dir = app.path().app_data_dir()?.join("models");
+            app.manage(EngineState { engine: flowstay_engine::Engine::start(), dir });
+            #[cfg(windows)]
+            ptt::start(app.handle().clone());
             let toggle = MenuItem::with_id(app, "toggle", "Start / stop transcription", true, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Open Flowstay", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Flowstay", true, None::<&str>)?;

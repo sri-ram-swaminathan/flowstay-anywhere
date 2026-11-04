@@ -1,0 +1,10 @@
+[package]
+name = "flowstay-engine"
+version = "0.1.0"
+edition = "2021"
+description = "On-device speech recognition for Flowstay (transcribe.cpp / Parakeet)"
+
+[dependencies]
+transcribe-cpp = { version = "0.4", default-features = false }
+ureq = "3"
+sha2 = "0.10"

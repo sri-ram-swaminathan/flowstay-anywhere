@@ -63,6 +63,7 @@ export const openRouter = {
     sessionStorage.setItem(PKCE, JSON.stringify({ verifier, state }));
     localStorage.setItem(PKCE, JSON.stringify({ verifier, state }));
     const { callbackUrl, result } = await platform().oauthBegin();
+    sessionStorage.setItem(PKCE, JSON.stringify({ verifier, state }));
     const url = `https://openrouter.ai/auth?${new URLSearchParams({ callback_url: callbackUrl, code_challenge: challenge, code_challenge_method: 'S256', state })}`;
     platform().openUrl(url);
     const { code, state: got } = await withTimeout(result, 180_000, 'Sign-in timed out');

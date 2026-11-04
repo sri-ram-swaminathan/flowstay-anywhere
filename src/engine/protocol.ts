@@ -1,13 +1,11 @@
 export type WorkerRequest =
-  | { id: number; type: 'loadAsr'; modelId: string; device: string }
-  | { id: number; type: 'transcribe'; modelId: string; device: string; audio: Float32Array; language: string; prompt: string }
   | { id: number; type: 'loadLlm'; modelId: string }
   | { id: number; type: 'rewrite'; modelId: string; system: string; user: string };
 
 export type WorkerResponse =
   | { id: number; type: 'ok'; result: any }
   | { id: number; type: 'error'; error: string }
-  | { id?: undefined; type: 'progress'; kind: 'asr' | 'llm'; loaded: number; total: number; file: string };
+  | { id?: undefined; type: 'progress'; kind: 'llm'; loaded: number; total: number; file: string };
 
 type DistributiveOmit<T, K extends keyof any> = T extends any ? Omit<T, K> : never;
 
@@ -15,7 +13,7 @@ export class Engine {
   private worker: Worker;
   private seq = 0;
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void }>();
-  onProgress: (kind: 'asr' | 'llm', loaded: number, total: number) => void = () => {};
+  onProgress: (kind: 'llm', loaded: number, total: number) => void = () => {};
 
   constructor() {
     this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });

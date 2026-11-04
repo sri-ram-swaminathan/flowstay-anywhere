@@ -1,20 +1,14 @@
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import * as c from '../controller';
-import { findAsr } from '../engine/models';
-import { history, onHistoryChange, recovery, type TranscriptionRecord } from '../history';
+import { history, HISTORY_LIMIT, onHistoryChange, type TranscriptionRecord } from '../history';
 import { platform } from '../platform';
-import { allPersonas, settings, useSettings } from '../store';
+import { allPersonas, useSettings, type PttKey } from '../store';
+import { Icon } from './icons';
 import { toast } from './toast';
 import { fmtDur, timeAgo } from './widgets';
 
-const LABEL: Record<c.Status, string> = {
-  idle: 'Ready to transcribe',
-  starting: 'Starting microphone…',
-  recording: 'Listening…',
-  transcribing: 'Transcribing…',
-  rewriting: 'Applying persona…',
-  error: 'Something went wrong',
-};
+export const KEY_LABEL: Record<PttKey, string> = { RightControl: 'Right Ctrl', RightAlt: 'Right Alt', RightShift: 'Right Shift', CapsLock: 'Caps Lock', F13: 'F13', off: '' };
+export const pretty = (sc: string) => sc.replace('Control', 'Ctrl').replace('Super', 'Win').split('+');
 
 export function Home({ go }: { go: (tab: string) => void }) {
   const s = useSettings();
@@ -23,116 +17,88 @@ export function Home({ go }: { go: (tab: string) => void }) {
   const el = c.elapsed.use();
   const err = c.lastError.use();
   const ms = c.modelState.use();
-  const p = platform();
+  const latency = c.lastLatency.use();
   const [recent, setRecent] = useState<TranscriptionRecord[]>([]);
-  const [pending, setPending] = useState(false);
-  const [showOrig, setShowOrig] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const bars = useRef<number[]>(Array(18).fill(0));
+  if (status === 'recording') bars.current = [...bars.current.slice(1), lvl];
 
   useEffect(() => {
-    const load = () => history.all().then((r) => setRecent(r.slice(0, 5)));
+    const load = () => history.all().then(setRecent);
     load();
-    c.hasPendingRecovery().then(setPending);
     return onHistoryChange(load);
   }, []);
 
-  const busy = status === 'transcribing' || status === 'rewriting' || status === 'starting';
-  const model = findAsr(s.asrModel);
-  const personas = allPersonas(s);
-  const activePersona = s.personasEnabled ? personas.find((x) => x.id === s.selectedPersonaId) : null;
-
-  const copy = async (t: string) => ((await p.copy(t)) ? toast('Copied') : toast('Copy failed: long-press the text to copy'));
-  const share = (t: string) => (navigator as any).share?.({ text: t }).catch(() => {});
+  const busy = status === 'transcribing' || status === 'rewriting';
+  const persona = s.personasEnabled ? allPersonas(s).find((x) => x.id === s.selectedPersonaId) : null;
+  const copy = async (t: string) => toast((await platform().copy(t)) ? 'Copied to clipboard' : 'Copy failed');
+  const title = status === 'recording' ? 'Listening…' : status === 'transcribing' ? 'Transcribing…' : status === 'rewriting' ? `Applying ${persona?.name ?? 'persona'}…` : 'Ready to dictate';
 
   return (
     <div class="page">
-      {p.kind === 'web' && !p.isStandalone && /iPhone|iPad/.test(navigator.userAgent) && (
-        <div class="banner">
-          <b>Install on your iPhone:</b> tap the Share button <span class="kbd">⬆︎</span> in Safari → <b>Add to Home Screen</b>. It then opens full-screen like an app and keeps the speech model cached offline.
-        </div>
+      {ms.state === 'none' && (
+        <div class="banner warn"><Icon name="download" /><span class="grow">Download a speech model to start dictating.</span><button class="btn primary" onClick={() => go('settings')}>Choose model</button></div>
       )}
-      {pending && (
-        <div class="banner warn inline" style="justify-content:space-between">
-          <span>An unfinished recording was found from last time.</span>
-          <span class="inline">
-            <button class="btn primary" onClick={async () => { setPending(false); await c.recoverPending(); }}>Recover &amp; transcribe</button>
-            <button class="btn ghost" onClick={() => { setPending(false); recovery.clear(); }}>Discard</button>
-          </span>
-        </div>
-      )}
+      {ms.state === 'error' && <div class="banner err"><span class="grow">Speech model error: {ms.error}</span><button class="btn" onClick={() => c.loadModel()}>Retry</button></div>}
+      {err && <div class="banner err"><span class="grow">{err}</span><button class="icon-btn" onClick={() => c.lastError.set(null)}><Icon name="x" size="sm" /></button></div>}
 
-      <div class="hero">
-        <div class="status-line">
-          {busy ? <span class="dot-spin" /> : <span>{status === 'recording' ? '🔴' : '🎙️'}</span>}
-          {LABEL[status]}
-        </div>
-        <button
-          class={`mic ${status === 'recording' ? 'rec' : busy ? 'busy' : ''}`}
-          aria-label={status === 'recording' ? 'Stop' : 'Start transcription'}
-          disabled={busy}
-          onClick={() => c.toggle()}
-        >
-          {status === 'recording' && <span class="ring" style={{ transform: `scale(${1 + Math.min(0.35, lvl * 6)})` }} />}
-          {status === 'recording' ? '■' : '🎤'}
-        </button>
-        <div class="timer">
+      <div class={`hero ${status === 'recording' ? 'rec' : ''}`}>
+        <div>
+          <div class="hero-title">
+            {status === 'recording' ? <span class="dot rec" /> : busy ? <span class="spin" /> : <span class={`dot ${ms.state === 'ready' ? 'ok' : ''}`} />}
+            {title}
+            {status === 'recording' && <span style="color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums">{fmtDur(el)}</span>}
+          </div>
           {status === 'recording' ? (
-            <span>
-              {fmtDur(el)} · tap to stop{' '}
-              <button class="btn ghost" style="padding:2px 8px" onClick={() => c.cancel()}>Cancel</button>
-            </span>
-          ) : p.kind === 'windows' ? (
-            <span>
-              or press <span class="kbd">{s.toggleShortcut.replace('Control', 'Ctrl')}</span>
-              {s.hotkeyPressMode !== 'toggle' && <> · hold <span class="kbd">{s.holdShortcut.replace('Control', 'Ctrl')}</span></>}
-            </span>
-          ) : null}
-        </div>
-        <div class="inline" style="justify-content:center">
-          <span class={`pill ${ms.asr === 'ready' ? 'ok' : ms.asr === 'error' ? 'err' : ms.asr === 'loading' ? 'blue' : ''}`}>
-            {model.label}
-            {ms.asr === 'loading' ? ` · downloading ${Math.round(ms.progress * 100)}%` : ms.asr === 'ready' ? ` · ${ms.device === 'webgpu' ? 'GPU' : 'CPU'}` : ms.asr === 'error' ? ' · failed' : ' · not loaded'}
-          </span>
-          <button class="pill" style="border:0;cursor:pointer" onClick={() => go('personas')}>
-            {activePersona ? `${activePersona.emoji ?? '✨'} ${activePersona.name}` : 'No persona'}
-          </button>
-          {s.vocabEnabled && s.vocabulary.length > 0 && <button class="pill" style="border:0;cursor:pointer" onClick={() => go('vocabulary')}>📖 {s.vocabulary.filter((v) => v.enabled).length} terms</button>}
-        </div>
-        {ms.asr === 'error' && <div class="banner warn">Model failed to load: {ms.error} <button class="btn" onClick={() => c.loadAsr().catch(() => {})}>Retry</button></div>}
-        {err && <div class="banner warn">{err}</div>}
-      </div>
-
-      <h3 class="inline" style="justify-content:space-between">
-        History
-        {recent.length > 0 && <button class="btn ghost" onClick={() => go('history')}>See all</button>}
-      </h3>
-      {recent.length === 0 && <div class="card meta">Your transcriptions will show up here.</div>}
-      {recent.map((r, i) => (
-        <div class="card" key={r.id}>
-          <div class="inline" style="justify-content:space-between;margin-bottom:6px">
-            <span class="inline">
-              {r.personaName && <span class="pill blue">{personas.find((x) => x.id === r.personaId)?.emoji} {r.personaName}</span>}
-              {r.appName && <span class="chip">{r.appName}</span>}
-              {!!r.corrections && <span class="chip">📖 {r.corrections} fixed</span>}
-            </span>
-            <span class="inline">
-              <button class="icon-btn" title="Copy" onClick={() => copy(r.processedText)}>⧉</button>
-              {'share' in navigator && <button class="icon-btn" title="Share" onClick={() => share(r.processedText)}>⬆︎</button>}
-            </span>
-          </div>
-          <div class="result-text" style={i ? 'font-size:15px' : ''}>{r.processedText}</div>
-          <div class="meta" style="margin-top:6px">
-            {timeAgo(r.timestamp)} · {fmtDur(r.duration)} · {r.wordCount} words
-            {r.wasProcessed && <> · <a href="#" onClick={(e) => { e.preventDefault(); setShowOrig(showOrig === r.id ? null : r.id); }}>{showOrig === r.id ? 'hide original' : 'original'}</a></>}
-          </div>
-          {showOrig === r.id && (
-            <div class="original inline" style="justify-content:space-between;flex-wrap:nowrap">
-              <span>{r.rawText}</span>
-              <button class="icon-btn" onClick={() => copy(r.rawText)}>⧉</button>
+            <div class="hero-help">
+              <div class="meter">{bars.current.map((l, i) => <i key={i} style={{ height: `${4 + Math.min(22, l * 300)}px` }} />)}</div>
+              <span><span class="kbd">Esc</span> cancel</span>
+            </div>
+          ) : (
+            <div class="hero-help">
+              {s.pttKey !== 'off' && <span><span class="kbd">{KEY_LABEL[s.pttKey]}</span> hold to talk, or tap to start / stop</span>}
+              {s.toggleShortcut && <span>{pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} toggle</span>}
             </div>
           )}
+          <div class="stats">
+            {latency !== null && <span class="pill" title="Time from stopping to text on your clipboard"><Icon name="zap" size="sm" />{(latency / 1000).toFixed(2)} s</span>}
+            <span class="pill"><Icon name="clipboard" size="sm" />{s.autoPasteEnabled ? 'Copy + paste' : 'Copy to clipboard'}</span>
+            <button class="pill" onClick={() => go('vocabulary')}><Icon name="book" size="sm" />{s.vocabEnabled ? `${s.vocabulary.filter((v) => v.enabled).length} terms` : 'Vocabulary off'}</button>
+            <button class="pill" onClick={() => go('personas')}><Icon name="sparkles" size="sm" />{persona ? persona.name : 'No persona'}</button>
+          </div>
         </div>
-      ))}
-      {p.kind === 'web' && <p class="hint" style="text-align:center">After each dictation the text is copied automatically{settings.get().autoCopyEnabled ? '' : ' (turned off)'}. Paste it anywhere.</p>}
+        <button class={`mic ${status === 'recording' ? 'rec' : busy ? 'busy' : ''}`} disabled={busy} title={status === 'recording' ? 'Stop' : 'Start dictating'} onClick={() => c.toggle()}>
+          {status === 'recording' && <span class="ring" style={{ transform: `scale(${1 + Math.min(0.3, lvl * 5)})` }} />}
+          {busy ? <span class="spin" /> : <Icon name={status === 'recording' ? 'stop' : 'mic'} />}
+        </button>
+      </div>
+
+      <h3>
+        Recent <span style="text-transform:none;letter-spacing:0;font-weight:500">last {HISTORY_LIMIT}</span>
+      </h3>
+      {recent.length === 0 ? (
+        <div class="empty">Your last {HISTORY_LIMIT} dictations appear here. Everything you say is also copied to your clipboard.</div>
+      ) : (
+        <div class="recent">
+          {recent.map((r) => (
+            <div class="item" key={r.id}>
+              <div class="text">{r.processedText}</div>
+              <div class="acts">
+                <button class="icon-btn" title="Copy" onClick={() => copy(r.processedText)}><Icon name="copy" size="sm" /></button>
+                <button class="icon-btn danger" title="Delete" onClick={() => history.remove(r.id)}><Icon name="trash" size="sm" /></button>
+              </div>
+              <div class="meta">
+                {timeAgo(r.timestamp)} · {fmtDur(r.duration)} · {r.wordCount} words
+                {r.appName && <span class="chip">{r.appName}</span>}
+                {r.personaName && <span class="chip">{r.personaName}</span>}
+                {!!r.corrections && <span class="chip">{r.corrections} vocabulary fix{r.corrections > 1 ? 'es' : ''}</span>}
+                {r.wasProcessed && <a href="#" onClick={(e) => { e.preventDefault(); setOpen(open === r.id ? null : r.id); }}>{open === r.id ? 'hide original' : 'original'}</a>}
+              </div>
+              {open === r.id && <div class="orig spread"><span>{r.rawText}</span><button class="icon-btn" onClick={() => copy(r.rawText)}><Icon name="copy" size="sm" /></button></div>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

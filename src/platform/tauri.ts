@@ -1,38 +1,62 @@
 import { invoke } from '@tauri-apps/api/core';
 import { emitTo, listen } from '@tauri-apps/api/event';
-import { register, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
+import { register, unregister } from '@tauri-apps/plugin-global-shortcut';
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart';
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import type { Platform, OverlayState } from './index';
+import type { EngineModel, OverlayState, Platform } from './index';
 
 export function tauriPlatform(): Platform {
   let overlayVisible = false;
   let lastOverlay = 0;
 
-  const copy = async (text: string) => {
-    try { await invoke('set_clipboard', { text }); return true; } catch { return false; }
-  };
-
   return {
     kind: 'windows',
-    isStandalone: true,
-    async deliver(text, o) {
-      if (o.autoPaste) {
-        try {
-          const ok = await invoke<boolean>('paste_text', { text, restore: !o.keepOnClipboard });
-          if (ok) return 'pasted';
-        } catch (e) {
-          console.warn('paste failed', e);
-        }
-      }
-      if (o.autoCopy || o.autoPaste) return (await copy(text)) ? 'copied' : 'none';
-      return 'none';
+
+    models: () => invoke<EngineModel[]>('engine_models'),
+    async download(id, onProgress) {
+      const un = await listen<{ id: string; loaded: number; total: number }>('model-progress', (e) => {
+        if (e.payload.id === id) onProgress(e.payload.loaded, e.payload.total);
+      });
+      try { await invoke('engine_download', { id }); } finally { un(); }
     },
-    copy,
+    deleteModel: (id) => invoke('engine_delete', { id }),
+    load: (id) => invoke('engine_load', { id }),
+    transcribe: (pcm, vocabulary, language) =>
+      invoke('engine_transcribe', new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength), {
+        headers: { 'x-vocabulary': encodeURIComponent(JSON.stringify(vocabulary)), 'x-language': encodeURIComponent(language) },
+      }),
+
+    setPttKey: (vk) => invoke('ptt_set_key', { vk }),
+    onPtt(cb) { listen<'down' | 'up' | 'combo'>('ptt', (e) => cb(e.payload)); },
+    async registerShortcut(sc, cb) {
+      try {
+        await unregister(sc).catch(() => {});
+        await register(sc, (e) => { if (e.state === 'Pressed') cb(); });
+        return null;
+      } catch (err) {
+        return `Couldn't use ${sc}: another app may own it (${err}).`;
+      }
+    },
+    unregisterShortcut: (sc) => unregister(sc).catch(() => {}),
+    async copy(text) {
+      try { await invoke('set_clipboard', { text }); return true; } catch { return false; }
+    },
+    async paste(text) {
+      try { return await invoke<boolean>('paste_text', { text, restore: false }); } catch { return false; }
+    },
     frontApp: () => invoke('foreground_app'),
+
     claudeAvailable: () => invoke<boolean>('claude_available'),
     runClaude: (args, stdin, timeoutMs) => invoke('run_claude', { args, stdin, timeoutMs }),
+    async oauthBegin() {
+      const port = await invoke<number>('oauth_listen');
+      const result = new Promise<{ code: string; state: string }>((resolve) => {
+        listen<{ code: string; state: string }>('oauth-callback', (e) => resolve(e.payload));
+      });
+      return { callbackUrl: `http://localhost:${port}/callback`, result };
+    },
+
     async notify(title, body) {
       try {
         let ok = await isPermissionGranted();
@@ -41,39 +65,16 @@ export function tauriPlatform(): Platform {
       } catch {}
     },
     openUrl: (url) => { openUrl(url).catch(() => {}); },
-    async oauthBegin() {
-      const port = await invoke<number>('oauth_listen');
-      const result = new Promise<{ code: string; state: string }>((resolve) => {
-        listen<{ code: string; state: string }>('oauth-callback', (e) => resolve(e.payload));
-      });
-      return { callbackUrl: `http://localhost:${port}/callback`, result };
-    },
     getAutostart: () => isEnabled(),
     setAutostart: async (on) => { on ? await enable() : await disable(); },
-    async registerHotkeys(cfg, on) {
-      await unregisterAll().catch(() => {});
-      const errors: string[] = [];
-      const reg = async (sc: string | undefined, which: 'toggle' | 'hold') => {
-        if (!sc) return;
-        try {
-          await register(sc, (e) => on(which, e.state === 'Pressed'));
-        } catch (err) {
-          errors.push(`${sc}: ${err}`);
-        }
-      };
-      await reg(cfg.toggle, 'toggle');
-      if (cfg.hold && cfg.hold !== cfg.toggle) await reg(cfg.hold, 'hold');
-      return errors.length ? `Couldn't register ${errors.join('; ')} (another app may be using it).` : null;
-    },
     overlay(state: OverlayState) {
       if (state.status === 'hidden') {
         if (overlayVisible) { overlayVisible = false; invoke('hide_overlay').catch(() => {}); }
         return;
       }
       if (!overlayVisible) { overlayVisible = true; invoke('show_overlay').catch(() => {}); }
-      // throttle level updates to ~30 fps
       const now = performance.now();
-      if (state.status === 'recording' && now - lastOverlay < 33) return;
+      if (state.status === 'recording' && now - lastOverlay < 33) return; // ~30 fps
       lastOverlay = now;
       emitTo('overlay', 'overlay-state', state).catch(() => {});
     },

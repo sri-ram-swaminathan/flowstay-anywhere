@@ -1,15 +1,7 @@
 /// <reference lib="webworker" />
-// Runs all on-device inference off the UI thread: speech-to-text and local persona rewrites.
-import {
-  AutoModelForCausalLM,
-  AutoTokenizer,
-  env,
-  pipeline,
-  type AutomaticSpeechRecognitionPipeline,
-  type PreTrainedModel,
-  type PreTrainedTokenizer,
-} from '@huggingface/transformers';
-import { findAsr, findLlm, type AsrModel } from './models';
+// Runs the on-device persona rewrite model (speech recognition is native, in Rust).
+import { AutoModelForCausalLM, AutoTokenizer, env, type PreTrainedModel, type PreTrainedTokenizer } from '@huggingface/transformers';
+import { findLlm } from './models';
 import type { WorkerRequest, WorkerResponse } from './protocol';
 
 env.allowLocalModels = false;
@@ -81,7 +73,6 @@ opfsSupported.then((ok) => {
 
 const post = (msg: WorkerResponse) => (self as unknown as Worker).postMessage(msg);
 
-let asr: { key: string; pipe: AutomaticSpeechRecognitionPipeline; model: AsrModel; device: string } | null = null;
 let llm: { key: string; tok: PreTrainedTokenizer; model: PreTrainedModel } | null = null;
 
 async function gpuInfo(): Promise<{ ok: boolean; f16: boolean }> {
@@ -94,15 +85,7 @@ async function gpuInfo(): Promise<{ ok: boolean; f16: boolean }> {
 }
 const hasWebGPU = async () => (await gpuInfo()).ok;
 
-async function pickDevice(pref: string, family: string): Promise<'webgpu' | 'wasm'> {
-  if (pref === 'cpu') return 'wasm';
-  const gpu = await hasWebGPU();
-  if (pref === 'gpu') return gpu ? 'webgpu' : 'wasm';
-  // auto: Whisper benefits a lot from GPU; small Moonshine models are fastest on WASM.
-  return gpu && family === 'whisper' ? 'webgpu' : 'wasm';
-}
-
-function progress(kind: 'asr' | 'llm') {
+function progress(kind: 'llm') {
   const files = new Map<string, { loaded: number; total: number }>();
   return (p: any) => {
     if (p.status === 'progress' && p.file) {
@@ -112,107 +95,6 @@ function progress(kind: 'asr' | 'llm') {
       post({ type: 'progress', kind, loaded, total, file: p.file });
     }
   };
-}
-
-async function loadAsr(modelId: string, devicePref: string) {
-  const model = findAsr(modelId);
-  const device = await pickDevice(devicePref, model.family);
-  const key = `${model.id}:${device}`;
-  if (asr?.key === key) return asr;
-  if (asr) { await asr.pipe.dispose().catch(() => {}); asr = null; }
-  const pipe = (await pipeline('automatic-speech-recognition', model.repo, {
-    device,
-    dtype: model.dtype as any,
-    progress_callback: progress('asr'),
-  })) as AutomaticSpeechRecognitionPipeline;
-  asr = { key, pipe, model, device };
-  return asr;
-}
-
-/** Split long audio at quiet points so each window fits the model. */
-function splitAudio(audio: Float32Array, windowSec: number, sr = 16000): Float32Array[] {
-  const max = windowSec * sr;
-  if (audio.length <= max) return [audio];
-  const out: Float32Array[] = [];
-  let start = 0;
-  const frame = sr / 50; // 20 ms
-  while (start < audio.length) {
-    if (audio.length - start <= max) { out.push(audio.subarray(start)); break; }
-    // search the last 6 s of the window for the quietest 20 ms frame
-    const searchFrom = start + max - 6 * sr;
-    let best = start + max, bestE = Infinity;
-    for (let i = searchFrom; i + frame < start + max; i += frame) {
-      let e = 0;
-      for (let j = i; j < i + frame; j++) e += audio[j] * audio[j];
-      if (e < bestE) { bestE = e; best = i + frame / 2; }
-    }
-    out.push(audio.subarray(start, best));
-    start = best;
-  }
-  return out;
-}
-
-function pad(audio: Float32Array, multiple: number, minSec = 0.5): Float32Array {
-  const min = Math.ceil((minSec * 16000) / multiple) * multiple;
-  const len = Math.max(min, Math.ceil(audio.length / multiple) * multiple);
-  if (len === audio.length) return audio;
-  const out = new Float32Array(len);
-  out.set(audio);
-  return out;
-}
-
-async function whisperWithPrompt(
-  pipe: AutomaticSpeechRecognitionPipeline,
-  audio: Float32Array,
-  language: string,
-  prompt: string,
-): Promise<string> {
-  const p = pipe as any;
-  const tok = p.tokenizer;
-  const one = (t: string) => tok.encode(t, { add_special_tokens: false })[0];
-  const genCfg = p.model.generation_config ?? {};
-  const init: number[] = [one('<|startoftranscript|>')];
-  if (genCfg.is_multilingual) {
-    init.push(one(`<|${language || 'en'}|>`));
-    init.push(one('<|transcribe|>'));
-  }
-  init.push(one('<|notimestamps|>'));
-  const promptIds: number[] = tok.encode(' ' + prompt.trim(), { add_special_tokens: false }).slice(-180);
-  const decoder_input_ids = [one('<|startofprev|>'), ...promptIds, ...init];
-  const { input_features } = await p.processor(audio);
-  const out = await p.model.generate({
-    inputs: input_features,
-    decoder_input_ids,
-    max_new_tokens: Math.max(32, 440 - decoder_input_ids.length),
-  });
-  const ids: number[] = (out.tolist()[0] as (number | bigint)[]).map(Number).slice(decoder_input_ids.length);
-  return tok.decode(ids, { skip_special_tokens: true });
-}
-
-async function transcribe(req: Extract<WorkerRequest, { type: 'transcribe' }>) {
-  const { pipe, model } = await loadAsr(req.modelId, req.device);
-  const t0 = performance.now();
-  const parts: string[] = [];
-  for (let chunk of splitAudio(req.audio, model.windowSec)) {
-    chunk = pad(chunk, model.padTo ?? 1);
-    let text = '';
-    if (model.family === 'whisper') {
-      if (req.prompt) {
-        try { text = await whisperWithPrompt(pipe, chunk, req.language, req.prompt); } catch (e) {
-          console.warn('prompted decode failed, falling back', e);
-        }
-      }
-      if (!text) {
-        const opts: any = { return_timestamps: false };
-        if ((pipe as any).model.generation_config?.is_multilingual) { opts.language = req.language || 'en'; opts.task = 'transcribe'; }
-        text = ((await pipe(chunk, opts)) as any).text;
-      }
-    } else {
-      text = ((await pipe(chunk)) as any).text;
-    }
-    parts.push(text.trim());
-  }
-  return { text: parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim(), ms: performance.now() - t0 };
 }
 
 async function loadLlm(modelId: string) {
@@ -271,14 +153,6 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   await opfsSupported;
   try {
     switch (req.type) {
-      case 'loadAsr': {
-        const a = await loadAsr(req.modelId, req.device);
-        post({ id: req.id, type: 'ok', result: { device: a.device } });
-        break;
-      }
-      case 'transcribe':
-        post({ id: req.id, type: 'ok', result: await transcribe(req) });
-        break;
       case 'loadLlm':
         await loadLlm(req.modelId);
         post({ id: req.id, type: 'ok', result: true });

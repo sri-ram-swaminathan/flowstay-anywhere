@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Portable CPU floor for the speech engine (never tune to the CI machine's CPU).
+  TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+
 jobs:
   build:
     runs-on: windows-latest
@@ -31,7 +35,6 @@ jobs:
             **Windows:** download `Flowstay_x.y.z_x64-setup.exe` below and run it.
             Windows SmartScreen may warn because the installer isn't code-signed: click *More info → Run anyway*.
 
-            **iPhone:** open https://sri-ram-swaminathan.github.io/flowstay-anywhere/ in Safari → Share → Add to Home Screen.
           releaseDraft: false
           prerelease: false
       - uses: actions/upload-artifact@v4

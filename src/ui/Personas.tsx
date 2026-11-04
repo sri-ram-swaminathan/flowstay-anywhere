@@ -6,6 +6,7 @@ import { openRouter, rewrite } from '../providers';
 import { allPersonas, settings, uid, useSettings, type AppRule, type Persona, type ProviderId } from '../store';
 import { vocabularyInstruction } from '../vocabulary';
 import { toast } from './toast';
+import { Icon } from './icons';
 import { confirmAsk, Modal, Row, Toggle } from './widgets';
 
 export function Personas() {
@@ -24,7 +25,7 @@ export function Personas() {
       <Provider />
 
       <div class="card">
-        <Row label={<b>✨ Enable personas</b>} hint="Rewrite each transcript with the selected style, from professional to casual.">
+        <Row label={<b>Enable personas</b>} hint="Rewrite each transcript with the selected style, from professional to casual.">
           <Toggle checked={s.personasEnabled} onChange={(v) => settings.set({ personasEnabled: v })} />
         </Row>
       </div>
@@ -44,30 +45,30 @@ export function Personas() {
 
       <h3 class="inline" style="justify-content:space-between">
         Your personas
-        <button class="btn" onClick={() => setEditing({ id: '', name: '', instruction: '', emoji: '📝' })}>+ New persona</button>
+        <button class="btn" onClick={() => setEditing({ id: '', name: '', instruction: '', emoji: '📝' })}><Icon name="plus" size="sm" />New persona</button>
       </h3>
       <div class="card">
-        {s.userPersonas.length === 0 && <div class="meta">Create your own, e.g. “Slack casual”, “Email to professor”, “Bullet points”.</div>}
+        {s.userPersonas.length === 0 && <div class="hint" style="padding:12px 0">Create your own, e.g. “Slack casual”, “Email to professor”, “Bullet points”.</div>}
         {s.userPersonas.map((x) => (
           <div class="list-item" key={x.id}>
             <div class="emoji">{x.emoji ?? '✨'}</div>
             <div class="grow"><b>{x.name}</b><div class="hint">{x.instruction}</div></div>
-            <button class="icon-btn" title="Edit" onClick={() => setEditing(x)}>✎</button>
-            <button class="icon-btn" title="Delete" style="color:var(--danger)" onClick={() => {
-              if (s.confirmPersonaDelete && !confirmAsk(`Delete “${x.name}”?`)) return;
+            <button class="icon-btn" title="Edit" onClick={() => setEditing(x)}><Icon name="edit" size="sm" /></button>
+            <button class="icon-btn danger" title="Delete" onClick={() => {
+              if (!confirmAsk(`Delete “${x.name}”?`)) return;
               settings.set({
                 userPersonas: s.userPersonas.filter((y) => y.id !== x.id),
                 selectedPersonaId: s.selectedPersonaId === x.id ? 'cleanup' : s.selectedPersonaId,
                 appRules: s.appRules.filter((r) => r.personaId !== x.id),
               });
-            }}>🗑</button>
+            }}><Icon name="trash" size="sm" /></button>
           </div>
         ))}
       </div>
 
       <h3>App-specific personas</h3>
       <div class="card">
-        {p.kind === 'windows' ? (
+        {p.kind === 'windows' || p.kind === 'mock' ? (
           <>
             <Row label="Use different personas for different apps" hint="Flowstay remembers which persona you prefer for each app (e.g. Outlook → Professional, Slack → Casual).">
               <Toggle checked={s.useSmartAppDetection} onChange={(v) => settings.set({ useSmartAppDetection: v })} />
@@ -79,13 +80,12 @@ export function Personas() {
                   const per = personas.find((x) => x.id === r.personaId);
                   return (
                     <div class="list-item" key={r.id}>
-                      <div class="emoji">🪟</div>
                       <div class="grow"><b>{r.appName}</b><div class="hint">→ {per?.emoji} {per?.name ?? 'Missing persona'} <span class="chip">{r.appId}</span></div></div>
-                      <button class="icon-btn" onClick={() => setRuleEdit(r)}>✎</button>
-                      <button class="icon-btn" style="color:var(--danger)" onClick={() => {
-                        if (s.confirmAppRuleDelete && !confirmAsk(`Remove rule for ${r.appName}?`)) return;
+                      <button class="icon-btn" onClick={() => setRuleEdit(r)}><Icon name="edit" size="sm" /></button>
+                      <button class="icon-btn danger" onClick={() => {
+                        if (!confirmAsk(`Remove rule for ${r.appName}?`)) return;
                         settings.set({ appRules: s.appRules.filter((y) => y.id !== r.id) });
-                      }}>🗑</button>
+                      }}><Icon name="trash" size="sm" /></button>
                     </div>
                   );
                 })}
@@ -108,7 +108,7 @@ export function Personas() {
 function Provider() {
   const s = useSettings();
   const p = platform();
-  const ms = c.modelState.use();
+  const ms = c.llmState.use();
   const [models, setModels] = useState<{ id: string; name: string; free: boolean }[]>([]);
   const [claudeOk, setClaudeOk] = useState<boolean | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -121,7 +121,7 @@ function Provider() {
   }, [s.provider]);
 
   const opts: [ProviderId, string][] = [['local', 'On-device (private)'], ['openrouter', 'OpenRouter (cloud)']];
-  if (p.kind === 'windows') opts.push(['claude-code', 'Claude Code (experimental)']);
+  if (p.kind !== 'mock') opts.push(['claude-code', 'Claude Code (experimental)']);
 
   return (
     <div class="card">
@@ -132,22 +132,13 @@ function Provider() {
       </Row>
 
       {s.provider === 'local' && (
-        <>
-          <div class="hint" style="margin-top:8px">🔒 Private on-device processing: a small open model runs locally, nothing leaves your device.</div>
-          <div class="stack" style="margin-top:10px">
-            {LLM_MODELS.map((m) => (
-              <label class={`model-opt ${s.localLlmModel === m.id ? 'on' : ''}`} key={m.id}>
-                <input type="radio" name="llm" checked={s.localLlmModel === m.id} onChange={() => { settings.set({ localLlmModel: m.id }); c.modelState.set({ ...c.modelState.get(), llm: 'unknown' }); }} />
-                <div><b>{m.label}</b> <span class="chip">~{m.approxMB} MB</span><div class="hint">{m.note}</div></div>
-              </label>
-            ))}
-          </div>
-          <Row label={ms.llm === 'ready' ? <span class="pill ok">✓ Model ready</span> : ms.llm === 'loading' ? <span class="pill blue">Downloading {Math.round(ms.progress * 100)}%</span> : ms.llm === 'error' ? <span class="pill err">Failed: {ms.error}</span> : <span class="pill">Downloads on first use</span>}>
-            <button class="btn" disabled={ms.llm === 'loading' || ms.llm === 'ready'} onClick={() => c.loadLlm().catch(() => {})}>Download now</button>
-          </Row>
-          {/iPhone|iPad/.test(navigator.userAgent) && <div class="hint">On iPhone, Safari can run out of memory loading a local model on older devices. If rewrites fail, use OpenRouter.</div>}
-        </>
+        <Row label={<>{LLM_MODELS[0].label} <span class="chip">~{LLM_MODELS[0].approxMB} MB</span></>} hint="Runs on your graphics card. Nothing leaves your PC.">
+          {ms.state === 'ready' ? <span class="pill ok"><Icon name="check" size="sm" />Ready</span>
+            : ms.state === 'loading' ? <span class="pill blue">Downloading {Math.round(ms.progress * 100)}%</span>
+            : <button class="btn" onClick={() => c.loadLlm().catch(() => {})}><Icon name="download" size="sm" />{ms.state === 'error' ? 'Retry' : 'Download'}</button>}
+        </Row>
       )}
+      {s.provider === 'local' && ms.state === 'error' && <div class="banner err" style="margin-bottom:12px">{ms.error}</div>}
 
       {s.provider === 'openrouter' && (
         <>
@@ -299,7 +290,7 @@ function TryIt() {
         <div class="inline">
           <button class="btn primary" disabled={busy || !persona} onClick={async () => {
             setBusy(true);
-            const r = await rewrite(c.engine, text, persona!.instruction, s.vocabEnabled ? vocabularyInstruction(s.vocabulary) : '');
+            const r = await rewrite(c.llm, text, persona!.instruction, s.vocabEnabled ? vocabularyInstruction(s.vocabulary) : '');
             setOut(r.ok ? r.text : `⚠️ ${r.error}`);
             setBusy(false);
           }}>{busy ? 'Rewriting…' : `Rewrite with ${persona?.emoji ?? ''} ${persona?.name ?? ''}`}</button>

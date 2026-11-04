@@ -6,8 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  # Portable CPU floor for the speech engine (never tune to the CI machine's CPU).
+  TRANSCRIBE_CMAKE_ARGS: -DGGML_NATIVE=OFF -DGGML_AVX=ON -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON -DGGML_BMI2=ON
+
 jobs:
-  web:
+  frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,23 +19,38 @@ jobs:
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm test
-      - run: npm run build:pages
+      - run: npm run build
 
-  e2e:
-    # Real on-device inference: downloads each model, dictates a speech clip, checks the transcript.
-    needs: web
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+  engine:
+    # Real speech through the native engine with every model: accuracy + latency.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            models: parakeet-unified-en,parakeet-110m,parakeet-v3
+          - os: windows-latest
+            models: parakeet-unified-en,parakeet-110m
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run build:pages
-      - run: curl -L -o jfk.wav https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav
-      - name: Dictation end-to-end
-        run: |
-          npx vite preview --port 4173 --strictPort &
-          sleep 3
-          node tests/e2e.mjs http://localhost:4173/ "$PWD/jfk.wav"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with: { workspaces: src-tauri, key: ${{ matrix.os }} }
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/flowstay-models
+          key: models-v1-${{ matrix.os }}
+      - name: Get test clip
+        shell: bash
+        run: curl -sL -o jfk.wav https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/jfk.wav
+      - name: Transcribe real speech
+        shell: bash
+        working-directory: src-tauri/engine
+        env:
+          FLOWSTAY_SPEECH_TEST: ${{ github.workspace }}/jfk.wav
+          FLOWSTAY_MODELS: ${{ matrix.models }}
+          TMPDIR: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
+        run: cargo test --release -- --nocapture

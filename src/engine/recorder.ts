@@ -1,4 +1,10 @@
-// Microphone capture → 16 kHz mono Float32 PCM, with level metering and silence auto-stop.
+// Microphone capture → 16 kHz mono Float32 PCM.
+//
+// Latency features:
+//  - Segments: at natural pauses (≥ 450 ms silence after ≥ 4 s of audio) the audio so far is
+//    handed off, so it's transcribed while you keep talking. On stop only the tail remains.
+//  - Instant start (optional): the mic stays open between dictations and the last 300 ms are
+//    kept, so the first syllable isn't lost to the time it takes to press the key.
 
 const WORKLET = `
 class Tap extends AudioWorkletProcessor {
@@ -11,25 +17,49 @@ class Tap extends AudioWorkletProcessor {
 registerProcessor('flowstay-tap', Tap);
 `;
 
+const SR = 16000;
+const SPEECH_RMS = 0.006;
+
 export interface RecorderEvents {
   onLevel?: (rms: number) => void;
   onSilenceTimeout?: () => void;
-  onChunk?: (pcm16k: Float32Array) => void; // ~every second, for crash recovery
+  onSegment?: (pcm: Float32Array) => void;
+}
+
+/** Growable PCM buffer. */
+class Pcm {
+  buf = new Float32Array(SR * 30);
+  len = 0;
+  push(x: Float32Array) {
+    if (this.len + x.length > this.buf.length) {
+      const n = new Float32Array(Math.max(this.buf.length * 2, this.len + x.length));
+      n.set(this.buf.subarray(0, this.len));
+      this.buf = n;
+    }
+    this.buf.set(x, this.len);
+    this.len += x.length;
+  }
+  slice(a: number, b = this.len) { return this.buf.slice(a, b); }
+  reset() { this.len = 0; }
 }
 
 export class Recorder {
   private ctx?: AudioContext;
   private stream?: MediaStream;
   private node?: AudioWorkletNode;
-  private chunks: Float32Array[] = [];
-  private pendingChunk: Float32Array[] = [];
-  private pendingLen = 0;
+  private pcm = new Pcm();
+  private preroll: Float32Array[] = [];
+  private capturing = false;
   private ratio = 3;
   private carry = new Float32Array(0);
+  private segStart = 0;
+  private silence = 0; // samples of trailing silence
+  private voiced = 0; // voiced samples since last cut
   private lastVoice = 0;
   private startedAt = 0;
   deviceId = '';
-  silenceTimeoutSec = 30;
+  silenceTimeoutSec = 60;
+  keepWarm = false;
 
   constructor(private ev: RecorderEvents = {}) {}
 
@@ -44,29 +74,26 @@ export class Recorder {
   }
 
   static async listInputs(): Promise<MediaDeviceInfo[]> {
-    const all = await navigator.mediaDevices.enumerateDevices();
-    return all.filter((d) => d.kind === 'audioinput');
+    return (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput');
   }
 
   get elapsed() {
     return this.startedAt ? (performance.now() - this.startedAt) / 1000 : 0;
   }
 
-  async start() {
-    this.chunks = [];
-    this.carry = new Float32Array(0);
+  private get open() {
+    return !!this.ctx && this.ctx.state !== 'closed' && !!this.stream?.active;
+  }
+
+  /** Opens the microphone (without recording) so the next start is instant. */
+  async warm() {
+    if (this.open) return;
     this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        deviceId: this.deviceId ? { exact: this.deviceId } : undefined,
-        channelCount: 1,
-        echoCancellation: false,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
+      audio: { deviceId: this.deviceId ? { exact: this.deviceId } : undefined, channelCount: 1, echoCancellation: false, noiseSuppression: true, autoGainControl: true },
     });
-    this.ctx = new AudioContext();
+    this.ctx = new AudioContext({ latencyHint: 'interactive' });
     if (this.ctx.state === 'suspended') await this.ctx.resume();
-    this.ratio = this.ctx.sampleRate / 16000;
+    this.ratio = this.ctx.sampleRate / SR;
     const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
     await this.ctx.audioWorklet.addModule(url);
     URL.revokeObjectURL(url);
@@ -74,27 +101,30 @@ export class Recorder {
     this.node = new AudioWorkletNode(this.ctx, 'flowstay-tap');
     this.node.port.onmessage = (e) => this.push(e.data as Float32Array);
     src.connect(this.node);
-    // keep graph alive without audible output
     const mute = this.ctx.createGain();
     mute.gain.value = 0;
     this.node.connect(mute).connect(this.ctx.destination);
+  }
+
+  async start() {
+    await this.warm();
+    this.pcm.reset();
+    this.carry = new Float32Array(0);
+    for (const p of this.preroll) this.pcm.push(p);
+    this.preroll = [];
+    this.segStart = 0;
+    this.silence = 0;
+    this.voiced = 0;
+    this.capturing = true;
     this.startedAt = performance.now();
     this.lastVoice = this.startedAt;
   }
 
   private push(input: Float32Array) {
-    // level
-    let sum = 0, peak = 0;
-    for (let i = 0; i < input.length; i++) { const v = input[i]; sum += v * v; if (Math.abs(v) > peak) peak = Math.abs(v); }
+    let sum = 0;
+    for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
     const rms = Math.sqrt(sum / input.length);
-    this.ev.onLevel?.(rms);
-    const now = performance.now();
-    if (rms > 0.003 || peak > 0.03) this.lastVoice = now;
-    else if (this.silenceTimeoutSec > 0 && now - this.lastVoice > this.silenceTimeoutSec * 1000) {
-      this.lastVoice = now;
-      this.ev.onSilenceTimeout?.();
-    }
-    // resample by box-filter averaging (good enough for speech, cheap)
+    // resample to 16 kHz (box filter: cheap and fine for speech)
     const buf = new Float32Array(this.carry.length + input.length);
     buf.set(this.carry);
     buf.set(input, this.carry.length);
@@ -107,51 +137,81 @@ export class Recorder {
       out[i] = s / (b - a);
     }
     this.carry = buf.slice(Math.floor(outLen * this.ratio));
-    this.chunks.push(out);
-    this.pendingChunk.push(out);
-    this.pendingLen += out.length;
-    if (this.pendingLen >= 16000) {
-      this.ev.onChunk?.(concat(this.pendingChunk));
-      this.pendingChunk = [];
-      this.pendingLen = 0;
+
+    if (!this.capturing) {
+      // warm & idle: keep ~300 ms of pre-roll
+      this.preroll.push(out);
+      let n = this.preroll.reduce((k, p) => k + p.length, 0);
+      while (n > SR * 0.3 && this.preroll.length > 1) n -= this.preroll.shift()!.length;
+      return;
+    }
+
+    this.ev.onLevel?.(rms);
+    this.pcm.push(out);
+    const now = performance.now();
+    if (rms > SPEECH_RMS) {
+      this.silence = 0;
+      this.voiced += out.length;
+      this.lastVoice = now;
+    } else {
+      this.silence += out.length;
+      if (this.silenceTimeoutSec > 0 && now - this.lastVoice > this.silenceTimeoutSec * 1000) {
+        this.lastVoice = now;
+        this.ev.onSilenceTimeout?.();
+      }
+    }
+    const segLen = this.pcm.len - this.segStart;
+    if (segLen >= 4 * SR && this.silence >= 0.45 * SR && this.voiced >= 0.5 * SR) {
+      this.cut(this.pcm.len - Math.floor(this.silence / 2));
+    } else if (segLen >= 24 * SR) {
+      this.cut(this.quietestIn(this.pcm.len - 4 * SR, this.pcm.len));
     }
   }
 
-  async stop(): Promise<{ audio: Float32Array; duration: number }> {
+  private quietestIn(a: number, b: number) {
+    const frame = 320;
+    let best = b, bestE = Infinity;
+    for (let i = a; i + frame <= b; i += frame) {
+      let e = 0;
+      for (let j = i; j < i + frame; j++) e += this.pcm.buf[j] * this.pcm.buf[j];
+      if (e < bestE) { bestE = e; best = i + frame / 2; }
+    }
+    return best;
+  }
+
+  private cut(at: number) {
+    const seg = this.pcm.slice(this.segStart, at);
+    this.segStart = at;
+    this.voiced = 0;
+    this.ev.onSegment?.(seg);
+  }
+
+  /** Stops recording and returns the audio not yet handed off as a segment. */
+  async stop(): Promise<{ tail: Float32Array; duration: number; total: number }> {
     const duration = this.elapsed;
+    this.capturing = false;
+    this.startedAt = 0;
+    const tail = this.pcm.slice(this.segStart);
+    const total = this.pcm.len;
+    if (!this.keepWarm) await this.close();
+    return { tail, duration, total };
+  }
+
+  async close() {
+    this.capturing = false;
+    this.preroll = [];
     this.node?.port.close();
     this.node?.disconnect();
     this.stream?.getTracks().forEach((t) => t.stop());
     await this.ctx?.close().catch(() => {});
     this.ctx = undefined;
-    this.startedAt = 0;
-    if (this.pendingLen) this.ev.onChunk?.(concat(this.pendingChunk));
-    this.pendingChunk = [];
-    this.pendingLen = 0;
-    return { audio: concat(this.chunks), duration };
+    this.stream = undefined;
   }
 
   cancel() {
-    this.stop().catch(() => {});
-    this.chunks = [];
+    this.capturing = false;
+    this.startedAt = 0;
+    this.pcm.reset();
+    if (!this.keepWarm) this.close();
   }
-}
-
-export function concat(parts: Float32Array[]): Float32Array {
-  const len = parts.reduce((n, p) => n + p.length, 0);
-  const out = new Float32Array(len);
-  let o = 0;
-  for (const p of parts) { out.set(p, o); o += p.length; }
-  return out;
-}
-
-export function isMostlySilent(audio: Float32Array): boolean {
-  let voiced = 0;
-  const frame = 320;
-  for (let i = 0; i + frame <= audio.length; i += frame) {
-    let s = 0;
-    for (let j = i; j < i + frame; j++) s += audio[j] * audio[j];
-    if (Math.sqrt(s / frame) > 0.004) voiced++;
-  }
-  return voiced < 8; // < ~160 ms of speech
 }

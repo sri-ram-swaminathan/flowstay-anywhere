@@ -46,3 +46,16 @@ test('import format', () => {
     { term: 'CBS', soundsLike: ['c b s', 'see bee ess'], enabled: true },
   ]);
 });
+
+test('glued and hyphenated aliases (hear → write)', () => {
+  const vocab = [v('Claude Code', ['cloud code'])];
+  for (const s of ['I use cloud code daily', 'I use CloudCode daily', 'I use Cloud-Code daily'])
+    assert.equal(applyVocabulary(s, vocab, { strictness: 0.5 }).text, 'I use Claude Code daily');
+  assert.equal(applyVocabulary('deploy to Cloudflare', vocab, { strictness: 0.5 }).text, 'deploy to Cloudflare');
+});
+
+test('engine bias list is capped and de-duplicated', async () => {
+  const { vocabularyTerms, BIAS_LIMIT } = await import('../src/vocabulary.ts');
+  const many = Array.from({ length: 60 }, (_, i) => v(`Term${i}`));
+  assert.equal(vocabularyTerms([...many, v('term0')]).length, BIAS_LIMIT);
+});

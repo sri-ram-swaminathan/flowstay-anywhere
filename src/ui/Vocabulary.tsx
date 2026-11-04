@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
-import { findAsr } from '../engine/models';
+import * as c from '../controller';
+import { Icon } from './icons';
 import { settings, uid, useSettings } from '../store';
-import { applyVocabulary, parseVocabImport, type VocabEntry } from '../vocabulary';
+import { aliasWarning, applyVocabulary, BIAS_LIMIT, parseVocabImport, type VocabEntry } from '../vocabulary';
 import { toast } from './toast';
 import { download, Modal, Row, Toggle } from './widgets';
 
@@ -13,7 +14,7 @@ export function Vocabulary() {
   const [edit, setEdit] = useState<VocabEntry | null>(null);
   const [importing, setImporting] = useState(false);
   const [test, setTest] = useState('I trained it in pie torch and pushed it to git hub');
-  const whisper = findAsr(s.asrModel).family === 'whisper';
+  const ms = c.modelState.use();
 
   const set = (vocabulary: VocabEntry[]) => settings.set({ vocabulary });
   const add = () => {
@@ -30,12 +31,13 @@ export function Vocabulary() {
   return (
     <div class="page">
       <h1>Vocabulary</h1>
-      <p class="sub">Words you use often — names, jargon, product names — so they’re transcribed the way you write them.</p>
+      <p class="sub">Names, jargon and product names you use, so they come out spelled your way.</p>
 
       <div class="card">
-        <Row label={<b>📖 Use my vocabulary</b>} hint={whisper
-          ? 'Your current Whisper model is also prompted with these terms while it listens, then the transcript is corrected and personas keep your spellings.'
-          : 'Transcripts are corrected for these terms (spelling, casing, and sound-alikes), and personas keep your spellings. Whisper models also get them as a listening hint.'}>
+        <Row label={<b>Use my vocabulary</b>} hint={<>
+          {ms.vocabulary ? `The speech model listens for your first ${BIAS_LIMIT} terms while you talk. ` : ''}
+          Every transcript is then corrected: spelling, capitals, sound-alikes and your “heard as” rules. Personas keep your spellings.
+        </>}>
           <Toggle checked={s.vocabEnabled} onChange={(v) => settings.set({ vocabEnabled: v })} />
         </Row>
         <Row label="Matching" hint="Relaxed catches more mishearings; strict only fixes near-identical ones.">
@@ -50,11 +52,12 @@ export function Vocabulary() {
       <h3>Add a term</h3>
       <div class="card stack">
         <div class="inline">
-          <input style="flex:2;min-width:140px" placeholder="How it should be written, e.g. PyTorch" value={term} onInput={(e) => setTerm((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
-          <input style="flex:3;min-width:160px" placeholder="Sounds like (optional, comma-separated): pie torch" value={alias} onInput={(e) => setAlias((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <input style="flex:2;min-width:140px" placeholder="Term, e.g. PyTorch" value={term} onInput={(e) => setTerm((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
+          <input style="flex:3;min-width:160px" placeholder="Heard as (optional), e.g. pie torch" value={alias} onInput={(e) => setAlias((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && add()} />
           <button class="btn primary" onClick={add}>Add</button>
         </div>
-        <div class="hint">“Sounds like” is optional. Most terms are caught automatically; add it for acronyms (“c b s” → CBS) or words the model keeps getting very wrong.</div>
+        {alias.split(',').map((a) => aliasWarning(a, term || 'your term')).filter(Boolean).map((w) => <div class="hint" style="color:var(--warn)" key={w}>{w}</div>)}
+        <div class="hint">“Heard as” is optional: an exact rule for what the model keeps writing instead (“cloud code” → Claude Code). It also catches glued and hyphenated forms. Most terms are fixed automatically without one.</div>
       </div>
 
       <h3 class="inline" style="justify-content:space-between">
@@ -71,11 +74,11 @@ export function Vocabulary() {
           <div class="list-item" key={v.id} style={v.enabled ? '' : 'opacity:.5'}>
             <div class="grow">
               <b>{v.term}</b>
-              {v.soundsLike.length > 0 && <div class="chips" style="margin-top:4px">{v.soundsLike.map((a) => <span class="chip" key={a}>“{a}”</span>)}</div>}
+              {v.soundsLike.length > 0 && <div class="chips" style="margin-top:4px">{v.soundsLike.map((a) => <span class="chip" key={a}>heard as “{a}”</span>)}</div>}
             </div>
             <Toggle checked={v.enabled} onChange={(on) => set(s.vocabulary.map((x) => (x.id === v.id ? { ...x, enabled: on } : x)))} />
-            <button class="icon-btn" onClick={() => setEdit(v)}>✎</button>
-            <button class="icon-btn" style="color:var(--danger)" onClick={() => set(s.vocabulary.filter((x) => x.id !== v.id))}>🗑</button>
+            <button class="icon-btn" onClick={() => setEdit(v)}><Icon name="edit" size="sm" /></button>
+            <button class="icon-btn danger" onClick={() => set(s.vocabulary.filter((x) => x.id !== v.id))}><Icon name="trash" size="sm" /></button>
           </div>
         ))}
       </div>
@@ -92,7 +95,7 @@ export function Vocabulary() {
           <h2>Edit term</h2>
           <div class="stack" style="margin-top:12px">
             <input value={edit.term} onInput={(e) => setEdit({ ...edit, term: (e.target as HTMLInputElement).value })} />
-            <input placeholder="Sounds like (comma-separated)" value={edit.soundsLike.join(', ')} onInput={(e) => setEdit({ ...edit, soundsLike: (e.target as HTMLInputElement).value.split(',').map((a) => a.trimStart()) })} />
+            <input placeholder="Heard as (comma-separated)" value={edit.soundsLike.join(', ')} onInput={(e) => setEdit({ ...edit, soundsLike: (e.target as HTMLInputElement).value.split(',').map((a) => a.trimStart()) })} />
             <div class="inline" style="justify-content:flex-end">
               <button class="btn ghost" onClick={() => setEdit(null)}>Cancel</button>
               <button class="btn primary" onClick={() => { set(s.vocabulary.map((x) => (x.id === edit.id ? { ...edit, soundsLike: edit.soundsLike.map((a) => a.trim()).filter(Boolean) } : x))); setEdit(null); }}>Save</button>
@@ -118,7 +121,7 @@ function ImportModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal onClose={onClose}>
       <h2>Import terms</h2>
-      <p class="hint">One per line. Optionally add what it sounds like after a colon:<br /><code>Maastricht</code><br /><code>CBS: c b s, see bee ess</code></p>
+      <p class="hint">One per line. Optionally add what it's heard as after a colon:<br /><code>Maastricht</code><br /><code>CBS: c b s, see bee ess</code></p>
       <textarea rows={10} value={text} onInput={(e) => setText((e.target as HTMLTextAreaElement).value)} />
       <div class="inline" style="justify-content:space-between;margin-top:10px">
         <label class="btn">Load .txt file<input type="file" accept=".txt,.csv,text/plain" hidden onChange={async (e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) setText(await f.text()); }} /></label>

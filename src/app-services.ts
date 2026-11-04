@@ -1,24 +1,11 @@
 import * as c from './controller';
-import { history as historyStore } from './history';
 import { platform } from './platform';
-import { openRouter } from './providers';
 import { log, settings } from './store';
 import { toast } from './ui/toast';
 
 declare const __APP_VERSION__: string;
 export const VERSION = __APP_VERSION__;
 export const REPO = 'sri-ram-swaminathan/flowstay-anywhere';
-
-export async function applyHotkeys(): Promise<string | null> {
-  const s = settings.get();
-  const cfg = {
-    toggle: s.hotkeyPressMode === 'hold' ? undefined : s.toggleShortcut,
-    hold: s.hotkeyPressMode === 'toggle' ? undefined : s.holdShortcut,
-  };
-  const err = await platform().registerHotkeys(cfg, c.onHotkey);
-  if (err) log(err);
-  return err;
-}
 
 export async function checkForUpdate(manual = false): Promise<string | null> {
   try {
@@ -44,32 +31,19 @@ const newer = (a: string, b: string) => {
   return false;
 };
 
-/** Startup sequence (mirrors Flowstay's AppInitializationService). */
+/** Startup: shortcuts, tray, model warm-up. */
 export async function boot() {
   const s = settings.get();
   const p = platform();
   log(`Starting ${VERSION} on ${p.kind}`);
-  // ask the browser not to evict our storage (models, history)
-  (navigator as any).storage?.persist?.().then((ok: boolean) => log(`Persistent storage: ${ok ? 'granted' : 'not granted'}`)).catch(() => {});
-
-  // finish an OpenRouter redirect sign-in (web)
-  const q = new URLSearchParams(location.search);
-  if (q.get('code')) {
-    try { await openRouter.finish(q.get('code')!, q.get('state')); toast('OpenRouter connected'); } catch (e: any) { toast(String(e.message ?? e)); }
-    window.history.replaceState(null, '', location.pathname);
-  }
-
-  await historyStore.prune(s.historyRetentionDays).catch(() => {});
-
-  if (p.kind === 'windows') {
-    await applyHotkeys();
-    p.onTray((a) => {
-      if (a === 'toggle') c.toggle();
-      if (a === 'settings') p.showMain();
-    });
-    if (s.checkForUpdates) setTimeout(() => checkForUpdate(false), 15_000);
-  }
-
-  // warm the speech model so the first dictation is instant
-  if (s.hasCompletedOnboarding) c.loadAsr().catch(() => {});
+  (navigator as any).storage?.persist?.().catch(() => {});
+  p.onPtt(c.onPtt);
+  p.onTray((a) => { if (a === 'toggle') c.toggle(); });
+  const err = await c.applyShortcuts();
+  if (err) { log(err); toast(err); }
+  c.configureRecorder();
+  await c.refreshModels().catch(() => {});
+  // keep the speech model loaded so the first dictation doesn't wait
+  c.loadModel();
+  if (p.kind === 'windows' && s.checkForUpdates) setTimeout(() => checkForUpdate(false), 15_000);
 }
