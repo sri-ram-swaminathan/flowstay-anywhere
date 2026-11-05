@@ -37,6 +37,7 @@ export interface Settings {
   cleanupEnabled: boolean; // remove filler words / stutters
   soundFeedbackEnabled: boolean;
   showOverlay: boolean;
+  face: 'system' | 'silver' | 'black';
   launchAtLogin: boolean;
   // personas
   personasEnabled: boolean;
@@ -67,7 +68,7 @@ export const BUILT_IN_PERSONAS: Persona[] = [
 
 export const DEFAULTS: Settings = {
   hasCompletedOnboarding: false,
-  model: 'parakeet-unified-en',
+  model: 'parakeet-v3',
   language: 'auto',
   micDeviceId: '',
   instantStart: false,
@@ -79,6 +80,7 @@ export const DEFAULTS: Settings = {
   cleanupEnabled: true,
   soundFeedbackEnabled: true,
   showOverlay: true,
+  face: 'system',
   launchAtLogin: false,
   personasEnabled: false,
   selectedPersonaId: 'cleanup',

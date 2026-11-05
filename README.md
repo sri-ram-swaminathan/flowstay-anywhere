@@ -8,6 +8,13 @@ and [Murmur](https://github.com/per-simmons/murmur-youtube).
 **Download:** `Flowstay_x.y.z_x64-setup.exe` from [Releases](../../releases/latest).
 It isn't code-signed yet, so SmartScreen warns on first run: *More info → Run anyway*.
 
+## Look
+
+The interface follows [Murmur](https://github.com/per-simmons/murmur-youtube)'s design system: a 1980s field
+recorder. Brushed front panel with TRANSPORT key and REC lamp, a needle VU meter, tape counter and model readout; a
+dark deck window that shows your words live; section keys over a recessed well. Silver face in light mode, black face
+in dark mode (override in Settings → System → Face). Red is used only for the record lamp.
+
 ## Use it
 
 | | |
@@ -27,9 +34,9 @@ Parakeet models on the CPU. The model stays loaded, so a dictation only pays for
 
 | Model | Download | English error rate | Speed on CPU |
 |---|---|---|---|
-| **Parakeet Unified** (default) | 731 MB | 4.0 % | ~14× real time |
-| Parakeet Fast 110M | 135 MB | 6.1 % | ~50× real time |
-| Parakeet v3, 25 languages | 740 MB | 4.8 % | ~14× real time |
+| **Parakeet v3, 25 languages** (default) | 740 MB | 4.8 % | ~14× real time |
+| Parakeet Unified, English | 731 MB | 4.0 % | ~14× real time |
+| Parakeet Fast 110M, English | 135 MB | 6.1 % | ~50× real time |
 
 Figures from Handy's benchmarks.
 

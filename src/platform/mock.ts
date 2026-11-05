@@ -3,9 +3,9 @@ import type { EngineModel, Platform } from './index';
 import { toast } from '../ui/toast';
 
 const MODELS: EngineModel[] = [
-  { id: 'parakeet-unified-en', name: 'Parakeet Unified (English)', blurb: 'Most accurate. Recommended.', size: 731_357_568, englishWer: 3.99, cpuSpeed: 14, multilingual: false, downloaded: true },
+  { id: 'parakeet-v3', name: 'Parakeet v3 (25 languages)', blurb: 'Recommended. 25 European languages incl. English and Dutch, auto-detected.', size: 739_508_576, englishWer: 4.83, cpuSpeed: 13.7, multilingual: true, downloaded: true },
+  { id: 'parakeet-unified-en', name: 'Parakeet Unified (English)', blurb: 'English only, slightly more accurate on English.', size: 731_357_568, englishWer: 3.99, cpuSpeed: 14, multilingual: false, downloaded: false },
   { id: 'parakeet-110m', name: 'Parakeet Fast 110M (English)', blurb: 'Fastest and smallest, slightly less accurate.', size: 135_373_280, englishWer: 6.11, cpuSpeed: 50, multilingual: false, downloaded: false },
-  { id: 'parakeet-v3', name: 'Parakeet v3 (25 languages)', blurb: 'European languages incl. Dutch, German, French, Spanish.', size: 739_508_576, englishWer: 4.83, cpuSpeed: 13.7, multilingual: true, downloaded: false },
 ];
 
 export function mockPlatform(): Platform {

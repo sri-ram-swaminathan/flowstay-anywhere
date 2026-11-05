@@ -29,9 +29,21 @@ pub struct ModelInfo {
 /// Accuracy and speed figures come from Handy's published model benchmarks.
 pub const MODELS: &[ModelInfo] = &[
     ModelInfo {
+        id: "parakeet-v3",
+        name: "Parakeet v3 (25 languages)",
+        blurb: "Recommended. 25 European languages incl. English and Dutch, auto-detected.",
+        url: "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf",
+        file: "parakeet-tdt-0.6b-v3-Q8_0.gguf",
+        size: 739_508_576,
+        sha256: "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7",
+        english_wer: 4.83,
+        cpu_speed: 13.7,
+        multilingual: true,
+    },
+    ModelInfo {
         id: "parakeet-unified-en",
         name: "Parakeet Unified (English)",
-        blurb: "Most accurate. Recommended.",
+        blurb: "English only, slightly more accurate on English.",
         url: "https://huggingface.co/handy-computer/parakeet-unified-en-0.6b-gguf/resolve/7e948f21b7bdbac698d3318db9d350f1096f3b6c/parakeet-unified-en-0.6b-Q8_0.gguf",
         file: "parakeet-unified-en-0.6b-Q8_0.gguf",
         size: 731_357_568,
@@ -51,18 +63,6 @@ pub const MODELS: &[ModelInfo] = &[
         english_wer: 6.11,
         cpu_speed: 50.0,
         multilingual: false,
-    },
-    ModelInfo {
-        id: "parakeet-v3",
-        name: "Parakeet v3 (25 languages)",
-        blurb: "European languages incl. Dutch, German, French, Spanish.",
-        url: "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/85ac09ea12fc4b1112fa76810059364bc6adc9de/parakeet-tdt-0.6b-v3-Q8_0.gguf",
-        file: "parakeet-tdt-0.6b-v3-Q8_0.gguf",
-        size: 739_508_576,
-        sha256: "5859f77944efcd8eafa23a6350731960b2b55b2203df51f319665c807d802cc7",
-        english_wer: 4.83,
-        cpu_speed: 13.7,
-        multilingual: true,
     },
 ];
 

@@ -101,6 +101,11 @@ export function Settings() {
 
       <h3>System</h3>
       <div class="card">
+        <Row label="Face" hint="Silver (brushed aluminium) or black (matte), like the two faces decks shipped in. System follows Windows light/dark mode.">
+          <select value={s.face} onChange={(e) => settings.set({ face: (e.target as HTMLSelectElement).value as any })}>
+            <option value="system">System</option><option value="silver">Silver</option><option value="black">Black</option>
+          </select>
+        </Row>
         <AutostartRow />
         <Row label="Check for updates"><Toggle checked={s.checkForUpdates} onChange={(v) => settings.set({ checkForUpdates: v })} /></Row>
         <Row label={`Version ${VERSION}`}><button class="btn" onClick={async () => toast((await checkForUpdate(true)) ?? '')}>Check now</button></Row>
