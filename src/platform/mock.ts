@@ -21,8 +21,6 @@ export function mockPlatform(): Platform {
     async deleteModel(id) { MODELS.find((x) => x.id === id)!.downloaded = false; },
     async load(id) { await sleep(300); return { id, vocabulary: true, loadMs: 300 }; },
     async transcribe(pcm) { await sleep(150); return { text: pcm.length > 8000 ? 'um so I think we should move the meeting to thursday because the report is not ready yet' : '', ms: 150 }; },
-    async setPttKey() {},
-    onPtt() {},
     async registerShortcut() { return null; },
     async unregisterShortcut() {},
     async copy(text) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } },

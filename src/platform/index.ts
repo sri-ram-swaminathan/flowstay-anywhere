@@ -27,8 +27,6 @@ export interface Platform {
   load(id: string): Promise<{ id: string; vocabulary: boolean; loadMs: number }>;
   transcribe(pcm: Float32Array, vocabulary: string[], language: string): Promise<{ text: string; ms: number }>;
   // ---- input / output
-  setPttKey(vk: number): Promise<void>;
-  onPtt(cb: (e: 'down' | 'up' | 'combo') => void): void;
   registerShortcut(shortcut: string, cb: (pressed: boolean) => void): Promise<string | null>;
   unregisterShortcut(shortcut: string): Promise<void>;
   copy(text: string): Promise<boolean>;

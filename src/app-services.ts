@@ -37,7 +37,6 @@ export async function boot() {
   const p = platform();
   log(`Starting ${VERSION} on ${p.kind}`);
   (navigator as any).storage?.persist?.().catch(() => {});
-  p.onPtt(c.onPtt);
   p.onTray((a) => { if (a === 'toggle') c.toggle(); });
   const err = await c.applyShortcuts();
   if (err) { log(err); toast(err); }

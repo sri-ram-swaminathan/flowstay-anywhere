@@ -2,11 +2,10 @@ import { useEffect, useState } from 'preact/hooks';
 import * as c from '../controller';
 import { history, HISTORY_LIMIT, onHistoryChange, type TranscriptionRecord } from '../history';
 import { platform } from '../platform';
-import { useSettings, type PttKey } from '../store';
+import { useSettings } from '../store';
 import { toast } from './toast';
 import { fmtDur } from './widgets';
 
-export const KEY_LABEL: Record<PttKey, string> = { Space: 'Space', RightControl: 'Right Ctrl', RightAlt: 'Right Alt', RightShift: 'Right Shift', CapsLock: 'Caps Lock', F13: 'F13', off: '' };
 export const pretty = (sc: string) => sc.replace('Control', 'Ctrl').replace('Super', 'Win').split('+');
 
 const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

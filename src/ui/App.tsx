@@ -3,7 +3,7 @@ import * as c from '../controller';
 import { platform } from '../platform';
 import { useSettings } from '../store';
 import { Lamp, Screws, VuMeter, Vents } from './equipment';
-import { KEY_LABEL, pretty, Transcriptions } from './Home';
+import { pretty, Transcriptions } from './Home';
 import { Onboarding } from './Onboarding';
 import { Personas } from './Personas';
 import { Settings } from './Settings';
@@ -40,7 +40,6 @@ export function App() {
   const status = c.status.use();
   const lvl = c.level.use();
   const el = c.elapsed.use();
-  const live = c.liveText.use();
   const last = c.lastResult.use();
   const latency = c.lastLatency.use();
   const models = c.models.use();
@@ -51,9 +50,7 @@ export function App() {
   const rec = status === 'recording';
   const busy = status === 'transcribing' || status === 'rewriting';
   const shortName = model ? model.name.replace(/\s*\(.*\)/, '').toUpperCase() : '—';
-  const hint = s.pttKey === 'Space' ? <>Hold <span class="kbd">Space</span> and talk. Let go to finish.</>
-    : s.pttKey !== 'off' ? <>Hold <span class="kbd">{KEY_LABEL[s.pttKey]}</span> and talk, or tap it to start and stop.</>
-    : s.toggleShortcut ? <>Press {pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} to start and stop.</> : 'Press Record to start.';
+  const hint = s.toggleShortcut ? <>Press {pretty(s.toggleShortcut).map((k) => <span class="kbd" key={k}>{k}</span>)} to start, press again to stop.</> : 'Press Record to start.';
 
   return (
     <div class={`unit face-${face}`}>
@@ -87,10 +84,10 @@ export function App() {
       </header>
 
       <section class="deck readout">
-        <span class="silk">{rec ? 'Live' : busy ? 'Proc' : 'Last'}</span>
+        <span class="silk">{rec ? 'Rec' : busy ? 'Proc' : 'Last'}</span>
         <div class="readout-text">
-          {rec || busy
-            ? <>{live || <span class="placeholder">{s.livePreview ? 'Listening…' : 'Live preview is off'}</span>}{rec && <span class="caret" />}</>
+          {rec ? <span class="placeholder">Recording… press {pretty(s.toggleShortcut || 'Record').map((k, i) => <span key={k}>{i ? '+' : ''}{k}</span>)} again to stop, Esc to cancel.<span class="caret" /></span>
+            : busy ? <span class="placeholder">Transcribing…</span>
             : last ? last.processedText
             : <span class="placeholder">{hint}</span>}
         </div>

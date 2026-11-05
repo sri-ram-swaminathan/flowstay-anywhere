@@ -53,7 +53,6 @@ export class Recorder {
   private ratio = 3;
   private carry = new Float32Array(0);
   private segStart = 0;
-  private segCount = 0;
   private silence = 0; // samples of trailing silence
   private voiced = 0; // voiced samples since last cut
   private lastVoice = 0;
@@ -114,7 +113,6 @@ export class Recorder {
     for (const p of this.preroll) this.pcm.push(p);
     this.preroll = [];
     this.segStart = 0;
-    this.segCount = 0;
     this.silence = 0;
     this.voiced = 0;
     this.capturing = true;
@@ -184,14 +182,8 @@ export class Recorder {
   private cut(at: number) {
     const seg = this.pcm.slice(this.segStart, at);
     this.segStart = at;
-    this.segCount++;
     this.voiced = 0;
     this.ev.onSegment?.(seg);
-  }
-
-  /** Audio of the sentence in progress (since the last segment cut). */
-  pending(): { pcm: Float32Array; segment: number } {
-    return { pcm: this.pcm.slice(this.segStart), segment: this.segCount };
   }
 
   /** Stops recording and returns the audio not yet handed off as a segment. */

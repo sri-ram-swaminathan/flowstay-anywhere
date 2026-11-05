@@ -27,8 +27,6 @@ export function tauriPlatform(): Platform {
         headers: { 'x-vocabulary': encodeURIComponent(JSON.stringify(vocabulary)), 'x-language': encodeURIComponent(language) },
       }),
 
-    setPttKey: (vk) => invoke('ptt_set_key', { vk }),
-    onPtt(cb) { listen<'down' | 'up' | 'combo'>('ptt', (e) => cb(e.payload)); },
     async registerShortcut(sc, cb) {
       try {
         await unregister(sc).catch(() => {});

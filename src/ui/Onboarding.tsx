@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import * as c from '../controller';
 import { Recorder } from '../engine/recorder';
-import { settings, useSettings, type PttKey } from '../store';
-import { KEY_LABEL } from './Home';
+import { settings, useSettings } from '../store';
+import { pretty } from './Home';
 import { Icon } from './icons';
 import { Modal } from './widgets';
 
@@ -14,7 +14,6 @@ export function Onboarding() {
   const ms = c.modelState.use();
   const status = c.status.use();
   const result = c.lastResult.use();
-  const live = c.liveText.use();
   const [startResult] = useState(() => c.lastResult.get());
   const [dlErr, setDlErr] = useState<string | null>(null);
   const finish = () => settings.set({ hasCompletedOnboarding: true });
@@ -38,7 +37,7 @@ export function Onboarding() {
       {step === 0 && (
         <>
           <h2>Welcome to Flowstay</h2>
-          <p class="sub">Hold a key, speak, let go: your words land on the clipboard and in the app you're typing in.</p>
+          <p class="sub">Press Ctrl+Space, speak, press it again: your words land on the clipboard and in the app you're typing in.</p>
           <div class="stack" style="margin-bottom:20px">
             <div class="inline"><Icon name="zap" /> Parakeet speech recognition runs on this PC: fast, accurate, private.</div>
             <div class="inline"><Icon name="book" /> Teach it your vocabulary: names, jargon, tools.</div>
@@ -51,7 +50,7 @@ export function Onboarding() {
       {step === 1 && (
         <>
           <h2>Microphone</h2>
-          <p class="sub">Flowstay only listens while you hold the key (or after you tap it).</p>
+          <p class="sub">Flowstay only listens between your start and stop presses.</p>
           {mic === false && <div class="banner warn">Blocked. Open Windows Settings → Privacy & security → Microphone and allow desktop apps, then try again.</div>}
           <div class="spread">
             {mic ? <span class="pill ok"><Icon name="check" size="sm" />Microphone works</span> : <button class="btn" onClick={async () => setMic(await Recorder.requestPermission())}><Icon name="mic" size="sm" />Allow microphone</button>}
@@ -90,23 +89,11 @@ export function Onboarding() {
       {step === 3 && (
         <>
           <h2>Try it</h2>
-          <p class="sub">Click into any text box, then hold your key and speak. Release to finish.</p>
-          <div class="row" style="padding-top:0">
-            <span class="label">Push-to-talk key</span>
-            <select value={s.pttKey} onChange={(e) => {
-              const k = (e.target as HTMLSelectElement).value as PttKey;
-              settings.set(k === 'Space' ? { pttKey: k, instantStart: true } : { pttKey: k });
-              c.configureRecorder();
-              c.applyShortcuts();
-            }}>
-              {(Object.keys(KEY_LABEL) as PttKey[]).filter((k) => k !== 'off').map((k) => <option key={k} value={k}>{KEY_LABEL[k]}</option>)}
-            </select>
-          </div>
+          <p class="sub">Click into any text box, press the shortcut, say a sentence, press it again.</p>
           <div style="text-align:center;padding:18px 0">
-            <span class={`kbd big-key ${status === 'recording' ? 'pressed' : ''}`}>{KEY_LABEL[s.pttKey]}</span>
-            <div class="hint" style="margin-top:12px">{status === 'recording' ? 'Listening… release to finish' : status === 'transcribing' ? 'Transcribing…' : 'Hold it now and say a sentence'}</div>
+            <span class="inline" style="justify-content:center">{pretty(s.toggleShortcut || 'Control+Space').map((k) => <span key={k} class={`kbd big-key ${status === 'recording' ? 'pressed' : ''}`}>{k}</span>)}</span>
+            <div class="hint" style="margin-top:12px">{status === 'recording' ? 'Recording… press it again to stop' : status === 'transcribing' ? 'Transcribing…' : 'Press it now and say a sentence'}</div>
           </div>
-          {status === 'recording' && <div class="card pad live-text" style="margin-top:0">{live || 'Start talking…'}<span class="caret" /></div>}
           {result && result !== startResult && <div class="card pad"><div class="selectable">{result.processedText}</div><div class="hint" style="margin-top:6px">That's on your clipboard now. Press Ctrl+V anywhere.</div></div>}
           <div class="spread"><button class="btn ghost" onClick={finish}>Skip</button><button class="btn primary" onClick={finish}>Done</button></div>
         </>

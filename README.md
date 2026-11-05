@@ -12,16 +12,14 @@ It isn't code-signed yet, so SmartScreen warns on first run: *More info → Run 
 
 The interface follows [Murmur](https://github.com/per-simmons/murmur-youtube)'s design system: a 1980s field
 recorder. Brushed front panel with TRANSPORT key and REC lamp, a needle VU meter, tape counter and model readout; a
-dark deck window that shows your words live; section keys over a recessed well. Silver face in light mode, black face
+dark deck window that shows your last result; section keys over a recessed well. Silver face in light mode, black face
 in dark mode (override in Settings → System → Face). Red is used only for the record lamp.
 
 ## Use it
 
 | | |
 |---|---|
-| **Right Ctrl** (default) | Hold to talk, release to finish, or tap to start and tap again to stop |
-| **Space** (option) | Hold to talk, like Claude Code's voice mode. A quick tap still types a space; fast typing, shortcuts with Ctrl/Alt/Win, and admin windows are left alone |
-| **Ctrl+Space** (configurable) | Hold to talk, or tap to start and tap again to stop |
+| **Ctrl+Space** (configurable) | Press to start recording, press again to stop |
 | **Esc** | Cancel the current recording |
 
 The text is copied to the clipboard the moment you stop, and also pasted into the window you were typing in
@@ -40,12 +38,8 @@ Parakeet models on the CPU. The model stays loaded, so a dictation only pays for
 
 Figures from Handy's benchmarks.
 
-**Live preview:** your words appear as you speak, in the recording bubble and on the Dictate screen. The sentence in
-progress is re-transcribed every ~0.6 s with full context, so the preview is as accurate as the final text.
-
 Latency tricks:
 - Audio is cut at natural pauses and transcribed **while you keep talking**, so stopping only waits for the last few seconds.
-- If the live preview already covers what you said, stopping reuses it: the text is on the clipboard almost instantly.
 - Leading/trailing silence is trimmed before inference.
 - **Instant start** (Settings → Microphone) keeps the mic open and keeps 500 ms of pre-roll, so your first word is never clipped.
 - The Dictate screen shows the stop-to-clipboard time of your last dictation.

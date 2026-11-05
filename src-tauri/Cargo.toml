@@ -3,7 +3,7 @@ members = ["engine"]
 
 [package]
 name = "flowstay"
-version = "0.4.0"
+version = "0.4.1"
 description = "Flowstay Anywhere - on-device dictation for Windows"
 edition = "2021"
 
@@ -32,8 +32,6 @@ windows = { version = "0.61", features = [
   "Win32_System_Threading",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
-  "Win32_System_LibraryLoader",
-  "Win32_Security",
 ] }
 
 [profile.release]

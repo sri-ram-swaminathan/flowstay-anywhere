@@ -4,8 +4,7 @@ import * as c from '../controller';
 import { PARAKEET_V3_LANGUAGES } from '../engine/models';
 import { Recorder } from '../engine/recorder';
 import { platform, type EngineModel } from '../platform';
-import { clearLog, readLog, settings, useSettings, type PttKey } from '../store';
-import { KEY_LABEL } from './Home';
+import { clearLog, readLog, settings, useSettings } from '../store';
 import { Icon } from './icons';
 import { toast } from './toast';
 import { confirmAsk, download, Row, ShortcutInput, Toggle } from './widgets';
@@ -44,18 +43,7 @@ export function Settings() {
 
       <h3>Shortcuts</h3>
       <div class="card">
-        <Row label="Push-to-talk key" hint={s.pttKey === 'Space'
-          ? 'Hold Space to talk, like Claude Code: a quick tap still types a space, and Space works normally with Ctrl/Alt/Win held or in admin windows. Instant start is turned on so your first word isn\'t clipped.'
-          : 'Hold to talk and release to finish, or tap once to start and again to stop. Right Ctrl doesn\'t type anything, so it\'s safe on every keyboard layout.'}>
-          <select value={s.pttKey} onChange={(e) => {
-            const k = (e.target as HTMLSelectElement).value as PttKey;
-            if (k === 'Space' && !s.instantStart) setMic({ instantStart: true });
-            setShortcuts({ pttKey: k });
-          }}>
-            {(Object.keys(KEY_LABEL) as PttKey[]).map((k) => <option key={k} value={k}>{k === 'off' ? 'Off' : KEY_LABEL[k]}</option>)}
-          </select>
-        </Row>
-        <Row label="Shortcut" hint="Hold to talk, or tap to start and tap again to stop. Note: while Flowstay runs it takes this combination from other apps (Ctrl+Space is also autocomplete in VS Code and an input-method switch for some languages).">
+        <Row label="Start / stop" hint="Press once to start recording, press again to stop. While Flowstay runs it takes this combination from other apps (Ctrl+Space is also autocomplete in VS Code).">
           <span class="inline">
             <ShortcutInput value={s.toggleShortcut} onChange={(v) => setShortcuts({ toggleShortcut: v })} />
             {s.toggleShortcut && <button class="icon-btn" title="Remove" onClick={() => setShortcuts({ toggleShortcut: '' })}><Icon name="x" size="sm" /></button>}
@@ -70,9 +58,6 @@ export function Settings() {
         <Row label="Copy to clipboard" hint="Always on: your words are on the clipboard the moment you stop."><span class="pill ok"><Icon name="check" size="sm" />Always</span></Row>
         <Row label="Also paste into the app you're typing in" hint="Sends Ctrl+V to the window that was active when you started. The text stays on the clipboard either way.">
           <Toggle checked={s.autoPasteEnabled} onChange={(v) => settings.set({ autoPasteEnabled: v })} />
-        </Row>
-        <Row label="Live preview" hint="See your words appear as you speak, in the recording bubble and here.">
-          <Toggle checked={s.livePreview} onChange={(v) => settings.set({ livePreview: v })} />
         </Row>
         <Row label="Remove filler words" hint="Drops um / uh / er and stutters like “I I think”. Instant, no AI.">
           <Toggle checked={s.cleanupEnabled} onChange={(v) => settings.set({ cleanupEnabled: v })} />
@@ -92,7 +77,7 @@ export function Settings() {
         <Row label="Instant start" hint="Keeps the microphone open so recording starts with zero delay and your first word is never clipped. Windows will show the mic as in use.">
           <Toggle checked={s.instantStart} onChange={(v) => setMic({ instantStart: v })} />
         </Row>
-        <Row label="Stop after silence" hint="Ends a tapped (hands-free) recording when you stop talking.">
+        <Row label="Stop after silence" hint="Ends the recording automatically if you forget to press stop.">
           <select value={s.silenceTimeoutSeconds} onChange={(e) => setMic({ silenceTimeoutSeconds: +(e.target as HTMLSelectElement).value })}>
             {[[5, '5 s'], [10, '10 s'], [30, '30 s'], [60, '1 min'], [0, 'Never']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>

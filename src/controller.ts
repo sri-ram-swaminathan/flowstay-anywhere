@@ -6,7 +6,7 @@ import { history, wordCount, type TranscriptionRecord } from './history';
 import { platform, type EngineModel, type FrontApp } from './platform';
 import { rewrite } from './providers';
 import { sounds } from './sounds';
-import { allPersonas, createValue, log, PTT_VK, settings, uid } from './store';
+import { allPersonas, createValue, log, settings, uid } from './store';
 import { applyVocabulary, vocabularyInstruction, vocabularyTerms } from './vocabulary';
 
 export type Status = 'idle' | 'recording' | 'transcribing' | 'rewriting';
@@ -17,7 +17,6 @@ export const elapsed = createValue(0);
 export const lastResult = createValue<TranscriptionRecord | null>(null);
 export const lastError = createValue<string | null>(null);
 export const lastLatency = createValue<number | null>(null); // ms from stop to text
-export const liveText = createValue(''); // words so far, while recording
 export const models = createValue<EngineModel[]>([]);
 export const modelState = createValue<{ state: 'none' | 'downloading' | 'loading' | 'ready' | 'error'; progress: number; error?: string; vocabulary?: boolean }>({ state: 'none', progress: 0 });
 export const llmState = createValue<{ state: 'unknown' | 'loading' | 'ready' | 'error'; progress: number; error?: string }>({ state: 'unknown', progress: 0 });
@@ -29,69 +28,16 @@ llm.onProgress = (_k, loaded, total) => llmState.set({ state: 'loading', progres
 const recorder = new Recorder({
   onLevel: (rms) => {
     level.set(rms);
-    if (settings.get().showOverlay) platform().overlay({ status: 'recording', level: rms, elapsed: recorder.elapsed, text: liveText.get() });
+    if (settings.get().showOverlay) platform().overlay({ status: 'recording', level: rms, elapsed: recorder.elapsed });
   },
   onSilenceTimeout: () => { log('Auto-stopped after silence'); stop(); },
-  onSegment: (pcm) => {
-    const i = segments.length;
-    const p = transcribePcm(pcm);
-    segments.push(p);
-    inflight++;
-    p.then((t) => { segTexts[i] = t; if (liveSeg <= i) liveTail = ''; renderLive(); }).catch(() => {}).finally(() => inflight--);
-  },
+  // finished sentences are transcribed while you keep talking
+  onSegment: (pcm) => segments.push(transcribePcm(pcm)),
 });
-
-// ---------------------------------------------------------------- live preview
-// While you talk, the sentence in progress is re-transcribed every ~0.6 s (full-context
-// passes, so the preview is as accurate as the final text); finished sentences stay fixed.
-let segTexts: string[] = [];
-let liveTail = '';
-let liveSeg = 0;
-let inflight = 0;
-let lastLiveLen = 0;
-let liveTimer: number | undefined;
-
-function renderLive() {
-  const s = settings.get();
-  let t = [...segTexts.filter(Boolean), liveTail].filter(Boolean).join(' ');
-  if (t && s.vocabEnabled && s.vocabulary.length) t = applyVocabulary(t, s.vocabulary, { strictness: s.vocabStrictness }).text;
-  if (t && s.cleanupEnabled) t = cleanTranscript(t);
-  liveText.set(t);
-  if (status.get() === 'recording' && s.showOverlay) platform().overlay({ status: 'recording', level: level.get(), elapsed: recorder.elapsed, text: t });
-}
-
-function startLive() {
-  segTexts = [];
-  liveTail = '';
-  liveSeg = 0;
-  lastLiveLen = 0;
-  liveText.set('');
-  if (!settings.get().livePreview) return;
-  liveTimer = window.setInterval(async () => {
-    if (status.get() !== 'recording' || inflight > 0) return;
-    const { pcm, segment } = recorder.pending();
-    if (pcm.length < 0.5 * 16000 || pcm.length - lastLiveLen < 0.25 * 16000) return;
-    lastLiveLen = pcm.length;
-    inflight++;
-    try {
-      const t = await transcribePcm(pcm);
-      if (status.get() !== 'recording') return;
-      if (recorder.pending().segment === segment) { liveTail = t; liveSeg = segment; }
-      renderLive();
-    } catch {} finally { inflight--; }
-  }, 600);
-}
-
-function stopLive() {
-  clearInterval(liveTimer);
-  liveTimer = undefined;
-}
 
 let segments: Promise<string>[] = [];
 let target: FrontApp | null = null;
 let tick: number | undefined;
-let pttDownAt = 0;
-let pttStarted = false; // this recording was started by the push-to-talk key
 let busy = false;
 
 // ---------------------------------------------------------------- models
@@ -178,7 +124,6 @@ export async function start(): Promise<void> {
     status.set('recording');
     elapsed.set(0);
     tick = window.setInterval(() => elapsed.set(recorder.elapsed), 200);
-    startLive();
     platform().registerShortcut('Escape', (down) => down && cancel());
   } catch (e: any) {
     fail(e?.name === 'NotAllowedError' ? 'Microphone access was denied. Allow it in Windows Settings → Privacy & security → Microphone.' : `Couldn't start recording: ${e?.message ?? e}`);
@@ -192,20 +137,15 @@ export async function stop(): Promise<void> {
   const s = settings.get();
   const p = platform();
   clearInterval(tick);
-  stopLive();
   p.unregisterShortcut('Escape');
   const t0 = performance.now();
-  const seg = recorder.pending().segment;
   const { tail, duration, total } = await recorder.stop();
-  // If the live preview already covers this sentence and you've only been silent since,
-  // reuse it instead of transcribing again.
-  const reuse = liveSeg === seg && !!liveTail && tail.length - lastLiveLen < 0.6 * 16000 && rms(tail.subarray(lastLiveLen)) < 0.006;
   if (s.soundFeedbackEnabled) sounds.stop();
   level.set(0);
   status.set('transcribing');
-  p.overlay({ status: 'transcribing', text: liveText.get() });
+  p.overlay({ status: 'transcribing' });
   try {
-    const parts = await Promise.all([...segments, reuse ? Promise.resolve(liveTail) : tail.length > 8000 ? transcribePcm(tail) : Promise.resolve('')]);
+    const parts = await Promise.all([...segments, tail.length > 8000 ? transcribePcm(tail) : Promise.resolve('')]);
     segments = [];
     let text = parts.filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
     if (!text) {
@@ -264,8 +204,6 @@ export async function stop(): Promise<void> {
 export function cancel() {
   if (status.get() !== 'recording') return;
   clearInterval(tick);
-  stopLive();
-  liveText.set('');
   platform().unregisterShortcut('Escape');
   recorder.cancel();
   segments = [];
@@ -277,60 +215,15 @@ export function cancel() {
 
 export const toggle = () => (status.get() === 'recording' ? stop() : start());
 
-/** Push-to-talk key: hold to talk (release stops), or tap to start and tap again to stop. */
-export function onPtt(e: 'down' | 'up' | 'combo') {
-  const st = status.get();
-  if (settings.get().pttKey === 'Space') {
-    // the hook only reports Space after it has been held past the threshold
-    if (e === 'down' && st === 'idle') { pttStarted = true; start(); }
-    else if (e === 'up' && st === 'recording') { pttStarted = false; stop(); }
-    return;
-  }
-  if (e === 'down') {
-    if (st === 'idle') { pttDownAt = performance.now(); pttStarted = true; start(); }
-    else if (st === 'recording') { pttStarted = false; stop(); }
-  } else if (e === 'up') {
-    if (st === 'recording' && pttStarted && performance.now() - pttDownAt > 350) { pttStarted = false; stop(); }
-  } else if (e === 'combo') {
-    // the key was used as a modifier (e.g. Ctrl+C): that wasn't a dictation
-    if (st === 'recording' && pttStarted && performance.now() - pttDownAt < 1500) { pttStarted = false; cancelQuietly(); }
-  }
-}
-
-/** The key combination (Ctrl+Space): hold to talk, or tap to start and tap again to stop. */
 let registered = '';
-let comboDownAt = 0;
-let comboStarted = false;
-function onShortcut(pressed: boolean) {
-  const st = status.get();
-  if (pressed) {
-    if (st === 'idle') { comboDownAt = performance.now(); comboStarted = true; start(); }
-    else if (st === 'recording') { comboStarted = false; stop(); }
-  } else if (st === 'recording' && comboStarted && performance.now() - comboDownAt > 350) {
-    comboStarted = false;
-    stop();
-  }
-}
-
-function cancelQuietly() {
-  clearInterval(tick);
-  stopLive();
-  liveText.set('');
-  platform().unregisterShortcut('Escape');
-  recorder.cancel();
-  segments = [];
-  status.set('idle');
-  level.set(0);
-  platform().overlay({ status: 'hidden' });
-}
 
 export async function applyShortcuts(): Promise<string | null> {
   const s = settings.get();
   const p = platform();
-  await p.setPttKey(PTT_VK[s.pttKey]);
   if (registered && registered !== s.toggleShortcut) await p.unregisterShortcut(registered);
   registered = s.toggleShortcut;
-  return s.toggleShortcut ? p.registerShortcut(s.toggleShortcut, onShortcut) : null;
+  // press to start, press again to stop
+  return s.toggleShortcut ? p.registerShortcut(s.toggleShortcut, (down) => down && toggle()) : null;
 }
 
 function resolvePersona(app: FrontApp | null) {
@@ -352,7 +245,6 @@ function rememberApp(app: FrontApp) {
 
 function fail(msg: string) {
   clearInterval(tick);
-  stopLive();
   platform().unregisterShortcut('Escape');
   log(`Error: ${msg}`);
   lastError.set(msg);
@@ -362,9 +254,3 @@ function fail(msg: string) {
   setTimeout(() => status.get() === 'idle' && platform().overlay({ status: 'hidden' }), 2500);
 }
 
-function rms(x: Float32Array) {
-  if (!x.length) return 0;
-  let s = 0;
-  for (let i = 0; i < x.length; i++) s += x[i] * x[i];
-  return Math.sqrt(s / x.length);
-}
