@@ -154,7 +154,7 @@ function AutostartRow() {
   const p = platform();
   useEffect(() => { p.getAutostart().then((on) => on !== s.launchAtLogin && settings.set({ launchAtLogin: on })).catch(() => {}); }, []);
   return (
-    <Row label="Start with Windows" hint="Runs quietly in the tray so your shortcut always works.">
+    <Row label="Start with Windows" hint="Runs quietly in the tray from sign-in, so Ctrl+Space always works. Closing the window keeps it running; quit from the tray icon to stop it.">
       <Toggle checked={s.launchAtLogin} onChange={async (v) => {
         try { await p.setAutostart(v); settings.set({ launchAtLogin: v }); } catch (e) { toast(`Couldn't change: ${e}`); }
       }} />

@@ -35,6 +35,7 @@ export interface Settings {
   showOverlay: boolean;
   face: 'system' | 'silver' | 'black';
   launchAtLogin: boolean;
+  autostartDefaulted: boolean; // start-with-Windows has been switched on once by default
   // personas
   personasEnabled: boolean;
   selectedPersonaId: string | null;
@@ -75,7 +76,8 @@ export const DEFAULTS: Settings = {
   soundFeedbackEnabled: true,
   showOverlay: true,
   face: 'system',
-  launchAtLogin: false,
+  launchAtLogin: true,
+  autostartDefaulted: false,
   personasEnabled: false,
   selectedPersonaId: 'cleanup',
   userPersonas: [],

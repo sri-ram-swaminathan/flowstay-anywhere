@@ -41,6 +41,12 @@ export async function boot() {
   const err = await c.applyShortcuts();
   if (err) { log(err); toast(err); }
   c.configureRecorder();
+  // Start with Windows by default so Ctrl+Space works right after you sign in.
+  // Done once; if you switch it off later, it stays off.
+  if (p.kind === 'windows' && !s.autostartDefaulted) {
+    try { await p.setAutostart(true); settings.set({ launchAtLogin: true, autostartDefaulted: true }); log('Start with Windows: enabled by default'); }
+    catch (e) { log(`Couldn't enable start with Windows: ${e}`); }
+  }
   await c.refreshModels().catch(() => {});
   // keep the speech model loaded so the first dictation doesn't wait
   c.loadModel();
